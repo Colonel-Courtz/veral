@@ -8,8 +8,7 @@ export const metadata: Metadata = {
   metadataBase: new URL('https://veral.tech'),
   openGraph: {
     title: 'Veral · Verification Authority Layer for Ethereum',
-    description:
-      'Twenty public sources. One deterministic score. ENS-anchored, EAS-published.',
+    description: 'Twenty public sources. One deterministic score. ENS-anchored, EAS-published.',
     type: 'website',
     url: 'https://veral.tech',
   },
@@ -19,11 +18,7 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
-  children,
-}: {
-  readonly children: React.ReactNode;
-}) {
+export default function RootLayout({ children }: { readonly children: React.ReactNode }) {
   return (
     <html lang="en">
       <body>{children}</body>

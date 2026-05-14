@@ -1,0 +1,37 @@
+# CODEOWNERS — required reviewers for each path
+# Format: <path> <github-handle> [<github-handle>...]
+
+# Repo root + governance
+/CLAUDE.md                          @B2JK-Industry
+/README.md                          @B2JK-Industry
+/LICENSE                            @B2JK-Industry
+/SECURITY.md                        @B2JK-Industry
+/CONTRIBUTING.md                    @B2JK-Industry
+/CODEOWNERS                         @B2JK-Industry
+/.github/                           @B2JK-Industry
+
+# Architecture decisions
+/docs/architecture/                 @B2JK-Industry
+
+# Tooling + CI
+/biome.json                         @B2JK-Industry
+/lefthook.yml                       @B2JK-Industry
+/commitlint.config.cjs              @B2JK-Industry
+/tsconfig.base.json                 @B2JK-Industry
+/vercel.json                        @B2JK-Industry
+/package.json                       @B2JK-Industry
+/pnpm-workspace.yaml                @B2JK-Industry
+
+# Packages
+/packages/shared/                   @B2JK-Industry
+/packages/core/                     @B2JK-Industry
+/packages/score/                    @B2JK-Industry
+/packages/sources/                  @B2JK-Industry
+/packages/authority/                @B2JK-Industry
+/packages/attest/                   @B2JK-Industry
+
+# Web app
+/apps/web/                          @B2JK-Industry
+
+# Contracts (high-stakes — separate reviewer when team grows)
+/contracts/                         @B2JK-Industry

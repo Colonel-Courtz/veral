@@ -18,10 +18,9 @@ export default function HomePage() {
           Verification Authority Layer for Ethereum.
         </p>
         <p className="mt-12 max-w-2xl text-lg leading-relaxed text-slate-veral/70">
-          Veral reads twenty public sources of evidence behind any ENS-named
-          subject — Sourcify, GitHub, on-chain activity, ENS records, EAS
-          attestations, audit registries — and computes a deterministic 0–100
-          reputation score, publishable as an EAS attestation bound to the
+          Veral reads twenty public sources of evidence behind any ENS-named subject — Sourcify,
+          GitHub, on-chain activity, ENS records, EAS attestations, audit registries — and computes
+          a deterministic 0–100 reputation score, publishable as an EAS attestation bound to the
           subject&apos;s ENS namehash.
         </p>
         <p className="mt-8 max-w-2xl font-display italic text-xl text-slate-veral">
@@ -47,9 +46,7 @@ export default function HomePage() {
           <div className="font-mono text-[10px] uppercase tracking-wider text-slate-veral/50">
             Anchor
           </div>
-          <div className="mt-2 font-mono text-sm">
-            ENS · EIP-712 · EAS
-          </div>
+          <div className="mt-2 font-mono text-sm">ENS · EIP-712 · EAS</div>
         </div>
         <div>
           <div className="font-mono text-[10px] uppercase tracking-wider text-slate-veral/50">

@@ -1,0 +1,95 @@
+name: Feature
+description: Propose a new capability or improvement
+title: 'feat(<scope>): <short summary>'
+labels: ['kind:feature', 'tier:P2']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template to propose a new feature. The agent picking up this issue should be able to implement it without further clarification.
+
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Motivation
+      description: What problem does this solve? Who benefits?
+      placeholder: 'Customers issuing Sealed certs need a way to ...'
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: Concrete implementation outline. Reference ADRs and existing patterns.
+      placeholder: |
+        Add a new function `verifyForensicSources()` in `packages/authority/src/synthesis/forensic.ts` that ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Discrete, testable conditions for "done"
+      placeholder: |
+        - [ ] New function exported from `packages/authority/src/synthesis/index.ts`
+        - [ ] Unit tests cover happy path + 3 edge cases
+        - [ ] Integration test against fixture
+        - [ ] Documentation added to package's README section
+    validations:
+      required: true
+
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Scope (package)
+      multiple: false
+      options:
+        - shared
+        - core
+        - score
+        - sources
+        - authority
+        - attest
+        - web
+        - contracts
+        - docs
+        - ci
+    validations:
+      required: true
+
+  - type: dropdown
+    id: tier
+    attributes:
+      label: Priority tier
+      multiple: false
+      options:
+        - 'P0 (blocks v1.0 launch)'
+        - 'P1 (required before enterprise customer)'
+        - 'P2 (operational excellence)'
+        - 'P3 (strategic / long-term)'
+    validations:
+      required: true
+
+  - type: textarea
+    id: refs
+    attributes:
+      label: References
+      description: Relevant ADRs, related issues, external specs
+      placeholder: |
+        - ADR-001 (tier methodology)
+        - Related: #45
+        - Spec: ERC-8121
+
+  - type: checkboxes
+    id: confirm
+    attributes:
+      label: Pre-flight checklist
+      options:
+        - label: I have read CONTRIBUTING.md
+          required: true
+        - label: I have read the package's AGENTS.md
+          required: true
+        - label: This issue does not duplicate an existing one
+          required: true

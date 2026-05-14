@@ -1,0 +1,71 @@
+name: Bug
+description: Report unexpected behavior
+title: 'fix(<scope>): <short summary>'
+labels: ['kind:bug', 'tier:P1']
+body:
+  - type: textarea
+    id: observed
+    attributes:
+      label: Observed behavior
+      description: What happened?
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What should have happened?
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open https://veral.tech/b/vitalik.eth
+        2. ...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Affected package
+      multiple: false
+      options:
+        - shared
+        - core
+        - score
+        - sources
+        - authority
+        - attest
+        - web
+        - contracts
+        - infra
+    validations:
+      required: true
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      multiple: false
+      options:
+        - 'Critical (production down or data loss)'
+        - 'High (broken core flow)'
+        - 'Medium (degraded experience)'
+        - 'Low (cosmetic)'
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      placeholder: |
+        - Browser: Chrome 130
+        - OS: macOS 14
+        - Commit: <sha>
+        - Network: mainnet / Sepolia

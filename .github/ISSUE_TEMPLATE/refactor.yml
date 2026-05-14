@@ -1,0 +1,55 @@
+name: Refactor
+description: Improve internal structure without changing behavior
+title: 'refactor(<scope>): <short summary>'
+labels: ['kind:refactor', 'tier:P2']
+body:
+  - type: textarea
+    id: current
+    attributes:
+      label: Current structure
+      description: What the code looks like today and why it's suboptimal
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed
+    attributes:
+      label: Proposed structure
+      description: What the new structure looks like
+    validations:
+      required: true
+
+  - type: textarea
+    id: invariants
+    attributes:
+      label: Invariants preserved
+      description: What public API, types, or behavior must remain identical
+    validations:
+      required: true
+
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Scope (package)
+      multiple: false
+      options:
+        - shared
+        - core
+        - score
+        - sources
+        - authority
+        - attest
+        - web
+        - contracts
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: anti-bloat
+    attributes:
+      label: Anti-bloat alignment (CLAUDE.md)
+      options:
+        - label: This refactor removes a parallel abstraction
+        - label: This refactor consolidates a single source of truth
+        - label: This refactor reduces file count or LOC
+        - label: This refactor improves test coverage

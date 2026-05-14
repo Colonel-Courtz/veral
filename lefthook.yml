@@ -1,0 +1,35 @@
+# Lefthook config — pre-commit + commit-msg hooks
+# https://github.com/evilmartians/lefthook
+
+pre-commit:
+  parallel: true
+  commands:
+    biome-check:
+      glob: '*.{ts,tsx,js,jsx,json}'
+      run: pnpm exec biome check --write {staged_files}
+      stage_fixed: true
+    typecheck-shared:
+      glob: 'packages/shared/**/*.ts'
+      run: pnpm --filter @veral/shared typecheck
+      skip:
+        - merge
+        - rebase
+    runtime-data-check:
+      run: |
+        if find apps/web/public/cache apps/web/public/manifests apps/web/public/reports 2>/dev/null | grep -q .; then
+          echo "[veral] Runtime data committed to apps/web/public/ — see CLAUDE.md rule 6"
+          exit 1
+        fi
+
+commit-msg:
+  commands:
+    commitlint:
+      run: pnpm exec commitlint --edit {1}
+
+pre-push:
+  parallel: true
+  commands:
+    typecheck-all:
+      run: pnpm typecheck
+    cycles:
+      run: pnpm exec madge --circular --extensions ts,tsx packages apps

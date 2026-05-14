@@ -11,13 +11,23 @@
   "scripts": {
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
-    "lint": "pnpm -r --if-present lint",
     "build": "pnpm -r --if-present build",
-    "dev": "pnpm --filter @veral/web dev"
+    "dev": "pnpm --filter @veral/web dev",
+    "lint": "biome lint .",
+    "format": "biome format --write .",
+    "check": "biome check --write .",
+    "ci": "biome ci .",
+    "cycles": "madge --circular --extensions ts,tsx packages apps",
+    "prepare": "lefthook install"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.4.15",
+    "@commitlint/cli": "^21.0.1",
+    "@commitlint/config-conventional": "^21.0.1",
+    "@types/node": "^22.10.0",
+    "lefthook": "^2.1.6",
+    "madge": "^8.0.0",
     "tsx": "^4.19.2",
-    "typescript": "^5.7.2",
-    "@types/node": "^22.10.0"
+    "typescript": "^5.7.2"
   }
 }

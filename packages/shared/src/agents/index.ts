@@ -1,6 +1,6 @@
 import type { z } from 'zod';
-import type { TierKey } from '../tiers/index.js';
 import type { SubjectManifest } from '../subject/types.js';
+import type { TierKey } from '../tiers/index.js';
 
 export type AgentId = string;
 export type SemVer = string;
