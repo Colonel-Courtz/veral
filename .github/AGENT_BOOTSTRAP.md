@@ -54,7 +54,7 @@ restriction).
 - Git destructive: `git push --force*`, `git reset --hard`, `git branch -D`, `git filter-branch`, `git filter-repo`, `git config user.*`, `git rebase -i`, `git push <remote> main`
 - Deploy: any `vercel *` command
 - Publish: `pnpm publish`, `npm publish`, `yarn publish`
-- Dep installs with args: `pnpm add *`, `pnpm install <pkg>`, `pip install`, `brew install` (only `pnpm install --frozen-lockfile` is allowed)
+- Dep installs in any form: `pnpm install` (bare, regenerates lockfile), `pnpm install <pkg>`, `pnpm add`, `npm i`, `pip install`, `brew install`. Only `pnpm install --frozen-lockfile` and `pnpm install --offline` are allowed
 - Solidity broadcasts: `forge create`, `forge script ... --broadcast`, `cast send`, `cast wallet *`
 - RCE: `curl ... | bash`, `wget ... | sh`
 - System control: `kill`, `pkill`, `reboot`, `shutdown`, `launchctl`, `systemctl`

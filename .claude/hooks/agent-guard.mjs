@@ -95,10 +95,15 @@ const FORBIDDEN_BASH = [
   { pattern: /\bforge\s+script\b[^|;]*--broadcast/, reason: 'forge --broadcast blocked' },
   { pattern: /\bcast\s+(send|wallet\s+sign|wallet\s+import|rpc\s+--rpc-url)/, reason: 'cast write op blocked' },
 
-  // Dep install with explicit packages — only frozen-lockfile installs allowed
+  // Dep install — ONLY `pnpm install --frozen-lockfile` or `--offline` allowed.
+  // Plain `pnpm install` (no args) regenerates the lockfile, which is a
+  // Daniel-only file. Bare `npm i`, `pnpm add`, etc. add new deps.
   { pattern: /\b(pnpm|npm|yarn)\s+add\b/, reason: 'adding deps blocked — add via PR + ADR' },
-  { pattern: /\b(pnpm|npm|yarn)\s+install\s+(?!--frozen-lockfile|--offline)\S/, reason: 'install with args blocked — only `pnpm install --frozen-lockfile` allowed' },
-  { pattern: /\bnpm\s+i\s+\S/, reason: 'npm i with args blocked' },
+  {
+    pattern: /\b(pnpm|npm|yarn)\s+install\b(?!\s+(?:--frozen-lockfile|--offline)\b)/,
+    reason: 'install blocked — only `pnpm install --frozen-lockfile` allowed; bare `pnpm install` regenerates lockfile (Daniel-only)',
+  },
+  { pattern: /\bnpm\s+i\b(?!\s+--frozen-lockfile\b)/, reason: 'npm i blocked — only `pnpm install --frozen-lockfile` allowed' },
   { pattern: /\b(pip|pip3|cargo)\s+install\b/, reason: 'system-wide package install blocked' },
   { pattern: /\bbrew\s+(install|update|upgrade|tap)\b/, reason: 'brew commands blocked' },
 
