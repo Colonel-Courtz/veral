@@ -1,11 +1,11 @@
-import type { AgentResult } from '../agents/index.js';
-import type { SubjectManifest } from '../subject/types.js';
-import type { TierKey } from '../tiers/index.js';
-import type { EvidenceBundle } from './evidence.js';
-import type { IssuanceResult } from './issuance.js';
-import type { PaymentVerification } from './payment.js';
-import type { ScoreResult } from './score.js';
-import type { TierEligibilityResult } from './tier-eligibility.js';
+import type { AgentResult } from '../agents/index';
+import type { SubjectManifest } from '../subject/types';
+import type { TierKey } from '../tiers/index';
+import type { EvidenceBundle } from './evidence';
+import type { IssuanceResult } from './issuance';
+import type { PaymentVerification } from './payment';
+import type { ScoreResult } from './score';
+import type { TierEligibilityResult } from './tier-eligibility';
 
 export interface OrchestrationInput {
   readonly requestId: string;

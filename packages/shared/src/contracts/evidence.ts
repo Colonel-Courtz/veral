@@ -1,6 +1,6 @@
-import type { AgentResult } from '../agents/index.js';
-import type { SubjectManifest } from '../subject/types.js';
-import type { TierKey } from '../tiers/index.js';
+import type { AgentResult } from '../agents/index';
+import type { SubjectManifest } from '../subject/types';
+import type { TierKey } from '../tiers/index';
 
 export interface EvidenceItem {
   readonly agentId: string;

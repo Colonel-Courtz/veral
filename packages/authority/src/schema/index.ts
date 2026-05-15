@@ -1,2 +1,2 @@
-export * from './attestation-payload.js';
-export * from './eas-schemas.js';
+export * from './attestation-payload';
+export * from './eas-schemas';

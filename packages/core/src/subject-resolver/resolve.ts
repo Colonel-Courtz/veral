@@ -2,13 +2,13 @@ import type { DeclaredSources, SubjectManifest } from '@veral/shared';
 import { SubjectResolutionError } from '@veral/shared';
 import { namehash } from 'viem/ens';
 
-import { type ParsedManifest, parseBenchManifest } from './manifest-parse.js';
+import { type ParsedManifest, parseBenchManifest } from './manifest-parse';
 import {
   buildEnsReaderFromEnv,
   type EnsChain,
   type EnsReader,
   publicReadFallback,
-} from './public-read-fallback.js';
+} from './public-read-fallback';
 
 export const VERAL_BENCH_MANIFEST_TEXT_KEY = 'veral.bench-manifest' as const;
 

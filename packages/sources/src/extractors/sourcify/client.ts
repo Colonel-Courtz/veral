@@ -1,4 +1,4 @@
-import type { SourcifyContractFinding, SourcifyMatchLevel } from './schema.js';
+import type { SourcifyContractFinding, SourcifyMatchLevel } from './schema';
 
 export const DEFAULT_SOURCIFY_BASE_URL = 'https://sourcify.dev/server';
 export const DEFAULT_SOURCIFY_TIMEOUT_MS = 10_000;

@@ -6,11 +6,7 @@ vi.hoisted(() => {
   process.env.TURSO_DATABASE_URL ??= 'file::memory:';
 });
 
-import {
-  ManifestParseError,
-  parseBenchManifest,
-  VERAL_MANIFEST_VERSION,
-} from '../manifest-parse.js';
+import { ManifestParseError, parseBenchManifest, VERAL_MANIFEST_VERSION } from '../manifest-parse';
 
 function validJson() {
   return {

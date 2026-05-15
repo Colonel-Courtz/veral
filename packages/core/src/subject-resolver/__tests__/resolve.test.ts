@@ -10,9 +10,9 @@ import type { DeclaredSources } from '@veral/shared';
 import { SubjectResolutionError } from '@veral/shared';
 import { namehash } from 'viem/ens';
 
-import { VERAL_MANIFEST_VERSION } from '../manifest-parse.js';
-import type { EnsChain, EnsReader } from '../public-read-fallback.js';
-import { resolveSubject, VERAL_BENCH_MANIFEST_TEXT_KEY } from '../resolve.js';
+import { VERAL_MANIFEST_VERSION } from '../manifest-parse';
+import type { EnsChain, EnsReader } from '../public-read-fallback';
+import { resolveSubject, VERAL_BENCH_MANIFEST_TEXT_KEY } from '../resolve';
 
 const SUBJECT = 'alice.eth';
 const SUBJECT_ADDR = `0x${'a'.repeat(40)}` as `0x${string}`;

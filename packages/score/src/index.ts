@@ -1,4 +1,4 @@
-import { computeScore as computeScoreV1_0 } from './versions/v1.0/engine.js';
+import { computeScore as computeScoreV1_0 } from './versions/v1.0/engine';
 
 export const SCORE_PACKAGE_VERSIONS = ['v1.0'] as const;
 export type ScoreEngineVersion = (typeof SCORE_PACKAGE_VERSIONS)[number];

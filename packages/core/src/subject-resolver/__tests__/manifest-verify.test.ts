@@ -9,13 +9,13 @@ vi.hoisted(() => {
 import { canonicalJson } from '@veral/shared';
 import { keccak256, stringToHex } from 'viem';
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
-import { type ParsedManifest, VERAL_MANIFEST_VERSION } from '../manifest-parse.js';
+import { type ParsedManifest, VERAL_MANIFEST_VERSION } from '../manifest-parse';
 import {
   VERAL_MANIFEST_DOMAIN,
   VERAL_MANIFEST_PRIMARY_TYPE,
   VERAL_MANIFEST_TYPES,
   verifyManifestSigner,
-} from '../manifest-verify.js';
+} from '../manifest-verify';
 
 const SIGNER_KEY = generatePrivateKey();
 const OTHER_KEY = generatePrivateKey();

@@ -1,13 +1,29 @@
 import { Redis } from '@upstash/redis';
 
-const url = process.env.KV_REST_API_URL;
-const token = process.env.KV_REST_API_TOKEN;
+// Lazy initialisation so the package is import-safe in environments
+// where Upstash env is missing (Next build "collect page data", local
+// scripts that import types). The throw still fires the moment a real
+// cache call is attempted, so production wiring problems surface
+// immediately on the first request rather than at deploy time.
+let redisInstance: Redis | null = null;
 
-if (!url || !token) {
-  throw new Error('KV_REST_API_URL and KV_REST_API_TOKEN are required');
+function getRedis(): Redis {
+  if (redisInstance !== null) return redisInstance;
+  const url = process.env.KV_REST_API_URL;
+  const token = process.env.KV_REST_API_TOKEN;
+  if (!url || !token) {
+    throw new Error('KV_REST_API_URL and KV_REST_API_TOKEN are required');
+  }
+  redisInstance = new Redis({ url, token });
+  return redisInstance;
 }
 
-export const redis = new Redis({ url, token });
+export const redis: Redis = new Proxy({} as Redis, {
+  get(_target, prop) {
+    const client = getRedis() as unknown as Record<string | symbol, unknown>;
+    return client[prop];
+  },
+});
 
 export const CACHE_TTL = {
   SOURCIFY: 60 * 60 * 24,
@@ -43,11 +59,12 @@ export async function getOrFetch<T>(
   ttlSeconds: number,
   fetcher: () => Promise<T>,
 ): Promise<T> {
-  const cached = await redis.get<T>(key);
+  const client = getRedis();
+  const cached = await client.get<T>(key);
   if (cached !== null) {
     return cached;
   }
   const fresh = await fetcher();
-  await redis.set(key, fresh, { ex: ttlSeconds });
+  await client.set(key, fresh, { ex: ttlSeconds });
   return fresh;
 }

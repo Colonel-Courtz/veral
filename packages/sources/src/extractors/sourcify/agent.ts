@@ -1,12 +1,12 @@
 import type { AgentInput, AgentResult, SourceAgent } from '@veral/shared';
 import { buildProvenance, CACHE_TTL, getOrFetch } from '@veral/shared';
 
-import { DEFAULT_SOURCIFY_BASE_URL, type FetchLike, fetchSourcifyContract } from './client.js';
+import { DEFAULT_SOURCIFY_BASE_URL, type FetchLike, fetchSourcifyContract } from './client';
 import {
   type SourcifyContractFinding,
   type SourcifyFindings,
   sourcifyFindingsSchema,
-} from './schema.js';
+} from './schema';
 
 const AGENT_ID = 'sourcify-extract';
 const AGENT_VERSION = '1.0.0';

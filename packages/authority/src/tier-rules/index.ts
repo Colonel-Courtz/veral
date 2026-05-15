@@ -1,3 +1,3 @@
-export * from './anchored-tier.js';
-export * from './public-tier.js';
-export * from './sealed-tier.js';
+export * from './anchored-tier';
+export * from './public-tier';
+export * from './sealed-tier';

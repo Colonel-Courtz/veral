@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import type { AgentProvenance, AgentResult, BackendDescriptor } from './index.js';
+import type { AgentProvenance, AgentResult, BackendDescriptor } from './index';
 
 export function canonicalJson(value: unknown): string {
   if (value === null || typeof value !== 'object') {

@@ -8,7 +8,7 @@ import type {
 } from '@veral/shared';
 import { buildProvenance } from '@veral/shared';
 
-import { type AgentRegistry, agentRegistry as defaultRegistry } from './registry.js';
+import { type AgentRegistry, agentRegistry as defaultRegistry } from './registry';
 
 export const DEFAULT_AGENT_TIMEOUT_MS = 30_000;
 

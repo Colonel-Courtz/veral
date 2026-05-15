@@ -12,8 +12,8 @@ import {
   repoHygiene,
   sourcifyRecency,
   testPresence,
-} from '../components.js';
-import type { MultiSourceEvidence } from '../evidence-types.js';
+} from '../components';
+import type { MultiSourceEvidence } from '../evidence-types';
 
 const NOW = 1_715_788_800;
 
@@ -48,6 +48,53 @@ describe('compileSuccess', () => {
       ],
     };
     expect(compileSuccess(ev)).toEqual({ value: null, status: 'null_no_data' });
+  });
+
+  it('treats functionSignatures null as cannot-verify and excludes from numerator', () => {
+    const ev: MultiSourceEvidence = {
+      ...empty(),
+      sourcify: [
+        {
+          kind: 'ok',
+          deep: {
+            match: 'exact_match',
+            creationMatch: 'exact_match',
+            runtimeMatch: 'exact_match',
+            functionSignatures: null,
+          },
+        },
+      ],
+    };
+    expect(compileSuccess(ev)).toEqual({ value: null, status: 'null_no_data' });
+  });
+
+  it('excludes null-signature entries even when other entries qualify', () => {
+    const ev: MultiSourceEvidence = {
+      ...empty(),
+      sourcify: [
+        {
+          kind: 'ok',
+          deep: {
+            match: 'exact_match',
+            creationMatch: 'exact_match',
+            runtimeMatch: 'exact_match',
+            functionSignatures: null,
+          },
+        },
+        {
+          kind: 'ok',
+          deep: {
+            match: 'exact_match',
+            creationMatch: 'exact_match',
+            runtimeMatch: 'exact_match',
+            functionSignatures: [{}, {}, {}],
+          },
+        },
+      ],
+    };
+    // Denominator is 1 (the qualifying entry); the null-sig entry is
+    // excluded from both numerator and denominator.
+    expect(compileSuccess(ev)).toEqual({ value: 1, status: 'computed' });
   });
 
   it('counts entries where both creationMatch and runtimeMatch are exact', () => {

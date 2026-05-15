@@ -1,4 +1,4 @@
-import type { TierKey } from '../tiers/index.js';
+import type { TierKey } from '../tiers/index';
 
 export type ScoreFormulaVersion = `v${number}.${number}.${number}`;
 

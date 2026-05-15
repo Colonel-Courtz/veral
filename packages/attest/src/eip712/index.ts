@@ -1,3 +1,3 @@
-export * from './sign.js';
-export * from './typed-data.js';
-export * from './verify.js';
+export * from './sign';
+export * from './typed-data';
+export * from './verify';

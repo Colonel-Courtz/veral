@@ -1,1 +1,1 @@
-export * from './subject-resolver/index.js';
+export * from './subject-resolver/index';

@@ -9,7 +9,7 @@ import {
 } from 'viem';
 import { namehash } from 'viem/ens';
 
-import type { ParsedManifest } from './manifest-parse.js';
+import type { ParsedManifest } from './manifest-parse';
 
 export const VERAL_MANIFEST_DOMAIN_NAME = 'Veral' as const;
 export const VERAL_MANIFEST_DOMAIN_VERSION = '1' as const;

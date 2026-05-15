@@ -11,7 +11,7 @@ import {
   type VeralCertMessage,
   ZERO_ADDRESS,
   ZERO_BYTES32,
-} from './typed-data.js';
+} from './typed-data';
 
 function bytes32(seed: string): `0x${string}` {
   return `0x${seed.repeat(64).slice(0, 64)}` as `0x${string}`;

@@ -1,6 +1,6 @@
 import { recoverTypedDataAddress } from 'viem';
 
-import { buildVeralCertTypedData, type VeralCertMessage } from './typed-data.js';
+import { buildVeralCertTypedData, type VeralCertMessage } from './typed-data';
 
 export type VerifyCertFailureReason = 'malformed_signature' | 'signer_mismatch' | 'recovery_failed';
 

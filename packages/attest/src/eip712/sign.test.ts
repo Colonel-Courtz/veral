@@ -1,13 +1,13 @@
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { REPORT_SIGNER_PRIVATE_KEY_ENV, signVeralCert } from './sign.js';
+import { REPORT_SIGNER_PRIVATE_KEY_ENV, signVeralCert } from './sign';
 import {
   TIER_CODE,
   VERAL_CERT_PRIMARY_TYPE,
   type VeralCertMessage,
   ZERO_BYTES32,
-} from './typed-data.js';
+} from './typed-data';
 
 const TEST_KEY = generatePrivateKey();
 const TEST_ADDR = privateKeyToAccount(TEST_KEY).address;

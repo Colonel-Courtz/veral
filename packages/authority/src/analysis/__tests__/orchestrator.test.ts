@@ -15,8 +15,8 @@ import type {
   TierKey,
 } from '@veral/shared';
 import { z } from 'zod';
-import { DEFAULT_AGENT_TIMEOUT_MS, orchestrate } from '../orchestrator.js';
-import { AgentRegistry } from '../registry.js';
+import { DEFAULT_AGENT_TIMEOUT_MS, orchestrate } from '../orchestrator';
+import { AgentRegistry } from '../registry';
 
 const SUBJECT: SubjectManifest = {
   ensName: 'alice.eth',

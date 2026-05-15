@@ -14,7 +14,7 @@ import {
   AgentRegistryDuplicateError,
   AgentRegistrySealedError,
   agentRegistry,
-} from '../registry.js';
+} from '../registry';
 
 function makeStubAgent<TFindings = unknown>(
   id: string,

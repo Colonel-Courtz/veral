@@ -6,8 +6,8 @@ vi.hoisted(() => {
   process.env.TURSO_DATABASE_URL ??= 'file::memory:';
 });
 
-import type { EnsChain, EnsReader } from '../public-read-fallback.js';
-import { publicReadFallback } from '../public-read-fallback.js';
+import type { EnsChain, EnsReader } from '../public-read-fallback';
+import { publicReadFallback } from '../public-read-fallback';
 
 const SUBJECT = 'alice.eth';
 const SUBJECT_ADDR = `0x${'a'.repeat(40)}` as `0x${string}`;

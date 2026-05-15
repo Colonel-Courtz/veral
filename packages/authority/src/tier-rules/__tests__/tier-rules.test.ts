@@ -1,9 +1,9 @@
 import type { SubjectKind, SubjectManifest } from '@veral/shared';
 import { describe, expect, it } from 'vitest';
 
-import { ANCHORED_TIER_REQUIREMENT, evaluateAnchoredTier } from '../anchored-tier.js';
-import { evaluatePublicTier, PUBLIC_TIER_REQUIREMENT } from '../public-tier.js';
-import { evaluateSealedTier, SEALED_TIER_REQUIREMENT } from '../sealed-tier.js';
+import { ANCHORED_TIER_REQUIREMENT, evaluateAnchoredTier } from '../anchored-tier';
+import { evaluatePublicTier, PUBLIC_TIER_REQUIREMENT } from '../public-tier';
+import { evaluateSealedTier, SEALED_TIER_REQUIREMENT } from '../sealed-tier';
 
 function subject(kind: SubjectKind = 'project'): SubjectManifest {
   return {
