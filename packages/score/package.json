@@ -1,0 +1,25 @@
+{
+  "name": "@veral/score",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Veral score engine — immutable per-version, deterministic, no I/O.",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./v1.0": "./src/versions/v1.0/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@veral/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8",
+    "@types/node": "^22.10.0"
+  }
+}
