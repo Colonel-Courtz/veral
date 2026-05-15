@@ -20,6 +20,9 @@ pre-commit:
           echo "[veral] Runtime data committed to apps/web/public/ — see CLAUDE.md rule 6"
           exit 1
         fi
+    reference-tag-check:
+      glob: '*.{ts,tsx,js,mjs,cjs}'
+      run: node scripts/lint-comments.mjs
 
 commit-msg:
   commands:

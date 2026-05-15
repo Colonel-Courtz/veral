@@ -64,6 +64,19 @@ jobs:
             exit 1
           fi
 
+  reference-tag-guard:
+    name: Reference-tag comment guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Forbid US-/GATE-/EPIC- comment tags (CLAUDE.md rule 2)
+        run: node scripts/lint-comments.mjs
+
   commitlint:
     name: Commit message lint
     runs-on: ubuntu-latest
