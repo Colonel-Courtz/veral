@@ -10,8 +10,7 @@ We do not predict trust. We compute it.
 
 ## Status
 
-- v0.x prototype shipped at ETHPrague 2026 as **Siren** (dual-track first place: Umia Best Agentic Venture, ENS Best ENS Integration for AI Agents).
-- v1.0 in development. Twenty-source rollout, three-tier certificate model, ENS Service Provider Program submission.
+v1.0 in development. Twenty-source rollout, three-tier certificate model, ENS Service Provider Program submission.
 
 ## Architecture
 

@@ -155,7 +155,7 @@ HTTP response → certificate UID + EAS URL
 
 ## 5. Anti-bloat enforcement (architectural)
 
-The following architectural rules prevent the AI-bloat patterns that contaminated the prior Siren codebase:
+The following architectural rules prevent the AI-bloat patterns that contaminated the prior hackathon codebase:
 
 1. **Strict dependency graph.** Cycles are CI failures. `apps/web` cannot import from `apps/web`. `score` cannot import from `sources`.
 
@@ -200,7 +200,7 @@ For foreign-investor / foreign-incorporation / external-audit presentation, the 
 | ADR-003 | Revocation policy (time-bound / manual / on-chain) | TBD — needs Daniel input |
 | ADR-004 | EAS schema design (fields, versioning, schema UID) | Depends on ADR-001..003 |
 | ADR-005 | Database schema (Turso tables, indexes, retention) | Depends on ADR-002, ADR-003 |
-| ADR-006 | Score formula carry-over from Siren | Port `score/weights.ts` unchanged for v1.0 P0 |
+| ADR-006 | Score formula carry-over from prior hackathon codebase | Port `score/weights.ts` unchanged for v1.0 P0 |
 | ADR-007 | Operator key custody + rotation | Operational doc |
 | ADR-008 | Rate limiting + abuse protection | Operational |
 | ADR-009 | Monitoring + observability | Operational |

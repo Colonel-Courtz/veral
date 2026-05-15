@@ -199,14 +199,14 @@ Customers and ENS DAO reviewers want transparency on uptime. Better Stack or Sta
 # ═══════════════════════════════════════════════════════════
 
 create_issue \
-  "feat(score): port @veral/score scaffold + tier ceiling logic from Siren" \
+  "feat(score): port @veral/score scaffold + tier ceiling logic" \
   "## Motivation
-Score formula v1.0 is locked per ADR-001 + Q1 (methodology depth). Port the LOCKED weights + components from the Siren codebase to fresh \`packages/score/\` with versioned structure.
+Score formula v1.0 is locked per ADR-001 + Q1 (methodology depth). Port the LOCKED weights + components from the prior hackathon codebase to fresh \`packages/score/\` with versioned structure.
 
 ## Proposal
 - Setup \`packages/score/\` workspace
 - Create \`src/versions/v1.0/\` directory
-- Port \`weights.ts\` byte-identical from Siren \`packages/evidence/src/score/weights.ts\`
+- Port \`weights.ts\` byte-identical from prior hackathon \`packages/evidence/src/score/weights.ts\`
 - Port \`components.ts\` aggregation logic
 - Port \`engine.ts\` orchestration
 - Strip all reference-tag comments (US-XXX, GATE-XXX) per CLAUDE.md
@@ -214,7 +214,7 @@ Score formula v1.0 is locked per ADR-001 + Q1 (methodology depth). Port the LOCK
 
 ## Acceptance criteria
 - [ ] \`packages/score/\` workspace registered in pnpm-workspace.yaml
-- [ ] \`src/versions/v1.0/weights.ts\` matches Siren weights byte-identical (TRUST_DISCOUNT_UNVERIFIED = 0.6, axis weights, tier thresholds)
+- [ ] \`src/versions/v1.0/weights.ts\` matches prior hackathon weights byte-identical (TRUST_DISCOUNT_UNVERIFIED = 0.6, axis weights, tier thresholds)
 - [ ] \`src/versions/v1.0/components.ts\` ports per-component compute
 - [ ] \`src/versions/v1.0/engine.ts\` ports aggregation
 - [ ] \`src/index.ts\` exports \`computeForVersion('v1.0')\`
@@ -384,7 +384,7 @@ Per ADR-004, orchestrator is pure deterministic code that runs scoped agents in 
 create_issue \
   "feat(authority): implement single agent registry (singleton, lint-enforced)" \
   "## Motivation
-Per ADR-004 + CLAUDE.md rule 1: one agent registry. Adding a parallel registry pattern is a CI failure (lessons from Siren bloat).
+Per ADR-004 + CLAUDE.md rule 1: one agent registry. Adding a parallel registry pattern is a CI failure (lessons from prior hackathon bloat).
 
 ## Acceptance criteria
 - [ ] \`analysis/registry.ts\` exports singleton \`agentRegistry\`
@@ -1000,7 +1000,7 @@ Primary user surface — type ENS name, see public Veral score + breakdown.
 create_issue \
   "feat(web): /r/[name] Contract Risk UI" \
   "## Motivation
-Per-upgrade verdict surface for proxy upgrades (SAFE / REVIEW / SIREN).
+Per-upgrade verdict surface for proxy upgrades (SAFE / REVIEW / ALERT).
 
 ## Acceptance criteria
 - [ ] \`apps/web/app/r/[name]/page.tsx\` — Server Component

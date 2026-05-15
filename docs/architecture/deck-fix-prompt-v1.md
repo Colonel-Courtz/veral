@@ -93,11 +93,11 @@ Reason: actual count from the visible list is 10/10, not 11/9.
 
 1. `veral.xyz/b/vitalik.eth` → `veral.tech/b/vitalik.eth`
 2. `veral.xyz/r/letadlo.eth` → `veral.tech/r/letadlo.eth`
-3. `veral.xyz/api/bench/siren-agent.eth` → `veral.tech/api/bench/siren-agent.eth`
+3. `veral.xyz/api/bench/veral-agent.eth` → `veral.tech/api/bench/veral-agent.eth`
 
 **Subtitle note change:**
 
-`upgrade-siren.vercel.app. veral.xyz launching soon — mock URLs in this slide show the planned domain.` → `upgrade-siren.vercel.app. veral.tech launching soon — mock URLs in this slide show the planned domain.`
+Replace any prior-deployment URL with `veral.tech launching soon — mock URLs in this slide show the planned domain.`
 
 **Add v1.0-preview disclaimer:**
 
@@ -113,7 +113,7 @@ This prevents misreading the example as current capability.
 
 **Add proof-link annotations under the two medal cards:**
 
-- Under Umia card: add small mono label `↳ devfolio.co/projects/[veral-or-siren-submission-id]`
+- Under Umia card: add small mono label `↳ devfolio.co/projects/[veral-submission-id]`
 - Under ENS card: add small mono label `↳ ETHPrague 2026 official results — link to be inserted`
 
 Reason: foreign-investor-grade due diligence requires verifiable evidence of claimed achievements. Reviewer needs link to confirm.
@@ -128,13 +128,9 @@ Keep the 🥇 emoji medals — direct evidence exception.
 
 Replace the two record callouts at the bottom:
 
-- `upgrade-siren:upgrade_manifest` — Per-contract version maps. Live-resolves every request.
+- Replace any prior text-record key with `veral.upgrade-manifest` — Per-contract version maps. Live-resolves every request.
 
-  → `veral.upgrade-manifest` — Per-contract version maps. Live-resolves every request. (Legacy `upgrade-siren:*` namespace preserved for backward compatibility through Term 1.)
-
-- `agent-bench:bench_manifest` — Multi-source declarations bound to namehash via full-payload EIP-712.
-
-  → `veral.bench-manifest` — Multi-source declarations bound to namehash via full-payload EIP-712. (Legacy `agent-bench:*` namespace preserved for backward compatibility through Term 1.)
+- Replace any prior text-record key with `veral.bench-manifest` — Multi-source declarations bound to namehash via full-payload EIP-712.
 
 **Code snippet update in Step 03:**
 

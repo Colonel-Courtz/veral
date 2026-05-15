@@ -48,7 +48,7 @@ playwright-report/
 next-env.d.ts
 
 # Runtime data — NEVER commit these into public/
-# (lesson from Siren: public/cache + public/manifests + public/reports were anti-pattern)
+# (lesson from prior hackathon: public/cache + public/manifests + public/reports were anti-pattern)
 apps/web/public/cache/
 apps/web/public/manifests/
 apps/web/public/reports/

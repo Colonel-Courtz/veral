@@ -4,11 +4,11 @@ These instructions are MANDATORY for any AI agent working in this repository.
 
 ## Project state
 
-**Veral** is the Verification Authority Layer for Ethereum. v1.0 in development. Prior identity: Siren (ETHPrague 2026 dual-track winner). Codebase here is greenfield — Siren code at `/Users/danielbabjak/Desktop/ETHPrague2026/` is reference-only and contains AI bloat that must NOT be carried over.
+**Veral** is the Verification Authority Layer for Ethereum. v1.0 in development. Codebase here is greenfield. A reference-only prior hackathon codebase lives at `/Users/danielbabjak/Desktop/ETHPrague2026/`; it contains AI bloat that must NOT be carried over.
 
 ## Hard rules (anti-bloat enforcement)
 
-These rules are derived from a code review of the prior Siren codebase. Every rule below was violated in Siren. Do not violate them here.
+These rules are derived from a code review of the prior hackathon codebase. Every rule below was violated there. Do not violate them here.
 
 ### 1. Single source of truth per concept
 
@@ -72,7 +72,7 @@ If feature X needs to integrate with system Y, modify system Y. Do not build sys
 3. No "AI auditor" / "trust layer" / "smart contract scanner" / "Web3 platform" framing
 4. Brand voice = calm institutional authority (verification authority archetype, NOT fintech disruptor)
 5. Mocked paths labeled `mock: true`
-6. Production EIP-712 signed reports verified against `agent-bench:owner` or `upgrade-siren:owner` ENS record
+6. Production EIP-712 signed reports verified against `veral.owner` ENS text record
 7. Single-branch development; merge to `main` without delay
 8. Never run `vercel deploy` / `vercel env add` / destructive git ops without explicit Daniel command
 9. No tokens. No tokenomics. Veral is tokenless by principle.
@@ -103,7 +103,7 @@ Score lookup + breakdown panel + open-source formula remain free forever. Only c
 
 ## Reference (read-only)
 
-- Siren codebase (prior identity): `/Users/danielbabjak/Desktop/ETHPrague2026/`
+- Prior hackathon codebase: `/Users/danielbabjak/Desktop/ETHPrague2026/`
   - Use as reference for evidence-engine patterns, EAS schemas, Sourcify integration depth.
   - Do NOT copy file-header comment blocks, reference-tag comments, or parallel-abstraction patterns.
-  - Siren `score/weights.ts` is the locked formula — Veral v1.0 ports it forward unchanged for v1.0 P0.
+  - `packages/evidence/src/score/weights.ts` in that codebase carries the locked score formula — Veral v1.0 ports it forward unchanged for v1.0 P0.
