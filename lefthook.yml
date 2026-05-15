@@ -23,6 +23,8 @@ pre-commit:
     reference-tag-check:
       glob: '*.{ts,tsx,js,mjs,cjs}'
       run: node scripts/lint-comments.mjs
+    secret-scan:
+      run: node scripts/secret-scan.mjs
 
 commit-msg:
   commands:
