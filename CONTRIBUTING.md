@@ -95,6 +95,9 @@ link it.
 
 ## AI-agent contributors
 
+Read [`.github/AGENT_BOOTSTRAP.md`](./.github/AGENT_BOOTSTRAP.md) **first**. It
+is the canonical first-message template. The rules below are excerpted there.
+
 If you are an AI agent (Claude, OpenAI Codex, or similar):
 
 1. Read the issue body fully before writing code
@@ -103,6 +106,54 @@ If you are an AI agent (Claude, OpenAI Codex, or similar):
 4. Make minimal changes — do not refactor unrelated code
 5. Run lint and tests locally before committing
 6. If you encounter an architectural ambiguity, open an issue (do not invent)
+
+### Worktree per task (mandatory)
+
+Never modify the main checkout directly. For every issue, create a worktree
+off `main`:
+
+```bash
+git worktree add ../veral-<issue-number> -b feat/<issue-number>-<slug> origin/main
+cd ../veral-<issue-number>
+pnpm install --frozen-lockfile
+```
+
+This prevents two agents (or your future self in another session) from
+overwriting each other's files. When the PR merges, remove the worktree
+with `git worktree remove ../veral-<issue-number>`.
+
+### Prior-art audit (mandatory before writing code)
+
+Before adding any new function, type, helper, or constant, grep the workspace
+for existing utilities:
+
+```bash
+grep -r "<the thing>" packages/shared/src/   # contracts first
+grep -r "<the thing>" packages/<your-pkg>/   # local next
+grep -r "<the thing>" packages/              # workspace last
+```
+
+Re-declaring an existing contract is the most common reason agent PRs are
+rejected. All canonical cross-package types live in
+[`packages/shared/src/contracts/`](./packages/shared/src/contracts/).
+
+### Issue claiming
+
+Before writing code, comment on the issue and add the `agent-claimed` label.
+Never pick up an issue already tagged `agent-claimed`, `requires:daniel`, or
+`requires:human-review`.
+
+### PR body discipline
+
+The diff shows what changed. The PR body should add only what the diff cannot:
+
+- **Summary** — one sentence on the WHY
+- **How verified** — exact commands you ran
+- **Trade-offs** — decisions the issue did not specify
+- **Risk** — what a reviewer should look at in production
+
+Do **not** restate acceptance criteria in the body. Do not pad with an "AI
+summary" of what you wrote. Reviewers can read the diff.
 
 ### Stub-first workflow
 

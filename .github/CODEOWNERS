@@ -1,0 +1,32 @@
+# CODEOWNERS for Veral
+# Auto-routes review requests by path. First match wins.
+
+# Default — Daniel owns everything an agent might touch
+*                                       @danielbabjak
+
+# Daniel-only paths (legal, signing, deploy, secrets) — agents must not edit
+/CLAUDE.md                              @danielbabjak
+/LICENSE                                @danielbabjak
+/.github/CODEOWNERS                     @danielbabjak
+/.github/workflows/deploy-production.yml @danielbabjak
+/.github/workflows/codeql.yml           @danielbabjak
+/contracts/                             @danielbabjak
+/scripts/seed-issues.sh                 @danielbabjak
+
+# Architecture decisions — Daniel reviews
+/docs/architecture/                     @danielbabjak
+
+# Anti-bloat rule sources — Daniel reviews
+/CONTRIBUTING.md                        @danielbabjak
+/biome.json                             @danielbabjak
+/lefthook.yml                           @danielbabjak
+/.github/PULL_REQUEST_TEMPLATE.md       @danielbabjak
+
+# Per-package — agent PRs are expected, Daniel reviews
+/packages/shared/                       @danielbabjak
+/packages/score/                        @danielbabjak
+/packages/sources/                      @danielbabjak
+/packages/authority/                    @danielbabjak
+/packages/attest/                       @danielbabjak
+/packages/core/                         @danielbabjak
+/apps/web/                              @danielbabjak
