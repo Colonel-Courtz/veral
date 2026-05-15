@@ -6,10 +6,42 @@ vi.hoisted(() => {
   process.env.TURSO_DATABASE_URL ??= 'file::memory:';
 });
 
-import type { AgentResult } from '@veral/shared';
-import type { SourcifyFindings } from '@veral/sources';
+import type { AgentResult, AgentStatus } from '@veral/shared';
+import type { GithubFindings, SourcifyFindings } from '@veral/sources';
 
-import { adaptAgentResultsToEvidence, SOURCIFY_AGENT_ID } from '../lib/score-adapter.js';
+import {
+  adaptAgentResultsToEvidence,
+  GITHUB_AGENT_ID,
+  SOURCIFY_AGENT_ID,
+} from '../lib/score-adapter.js';
+
+function githubResult(
+  status: AgentStatus,
+  findings: GithubFindings | null,
+  errorMessage?: string,
+): AgentResult<GithubFindings | null> {
+  return {
+    agentId: GITHUB_AGENT_ID,
+    agentVersion: '1.0.0',
+    runUuid: 'run-1',
+    runStartedAt: 0,
+    runFinishedAt: 1,
+    status,
+    findings,
+    provenance: {
+      backend: { kind: 'rest-api', baseUrl: 'http://test', version: '2022-11-28' },
+      inputHash: '0x',
+      ...(errorMessage !== undefined ? { errorMessage } : {}),
+    },
+  };
+}
+
+function githubFindings(
+  user: GithubFindings['user'],
+  repos: GithubFindings['repos'] = [],
+): GithubFindings {
+  return { trust: 'unverified', user, repos, callBudget: 0 };
+}
 
 function sourcifyResult(findings: SourcifyFindings): AgentResult<SourcifyFindings> {
   return {
@@ -206,5 +238,144 @@ describe('adaptAgentResultsToEvidence', () => {
     };
     const ev = adaptAgentResultsToEvidence([errored, malformed]);
     expect(ev.sourcify).toEqual([]);
+  });
+});
+
+describe('adaptAgentResultsToEvidence — GitHub branch', () => {
+  it('maps a successful GitHub agent run into MultiSourceEvidence.github kind=ok', () => {
+    const result = githubResult(
+      'ok',
+      githubFindings({ login: 'alice', createdAt: '2022-01-01T00:00:00Z', publicRepos: 2 }, [
+        {
+          name: 'alpha',
+          fullName: 'alice/alpha',
+          pushedAt: '2026-05-01T00:00:00Z',
+          stars: 100,
+          hasTestDir: true,
+          hasSubstantialReadme: true,
+          hasLicense: true,
+        },
+        {
+          name: 'beta',
+          fullName: 'alice/beta',
+          pushedAt: null,
+          stars: 0,
+          hasTestDir: false,
+          hasSubstantialReadme: false,
+          hasLicense: false,
+        },
+      ]),
+    );
+    const ev = adaptAgentResultsToEvidence([result]);
+    expect(ev.github.kind).toBe('ok');
+    if (ev.github.kind === 'ok') {
+      expect(ev.github.value.user).toEqual({ login: 'alice' });
+      expect(ev.github.value.repos).toHaveLength(2);
+      expect(ev.github.value.repos[0]).toEqual({
+        pushedAt: '2026-05-01T00:00:00Z',
+        hasTestDir: true,
+        hasSubstantialReadme: true,
+        hasLicense: true,
+      });
+    }
+  });
+
+  it('does NOT invent P1 fields on the mapped repos', () => {
+    const result = githubResult(
+      'ok',
+      githubFindings({ login: 'alice', createdAt: null, publicRepos: 1 }, [
+        {
+          name: 'alpha',
+          fullName: 'alice/alpha',
+          pushedAt: null,
+          stars: 0,
+          hasTestDir: false,
+          hasSubstantialReadme: false,
+          hasLicense: false,
+        },
+      ]),
+    );
+    const ev = adaptAgentResultsToEvidence([result]);
+    if (ev.github.kind === 'ok') {
+      const repo = ev.github.value.repos[0];
+      // Score engine's repoHygiene reads typeof flag === 'boolean'.
+      // undefined here means "P1 didn't run" and the engine excludes
+      // the field from the denominator — exactly the behavior we want.
+      expect(repo).toBeDefined();
+      if (repo) {
+        expect(repo.hasSecurity).toBeUndefined();
+        expect(repo.hasDependabot).toBeUndefined();
+        expect(repo.hasBranchProtection).toBeUndefined();
+        expect(repo.ciRuns).toBeUndefined();
+        expect(repo.bugIssues).toBeUndefined();
+        expect(repo.releasesLast12m).toBeUndefined();
+      }
+    }
+  });
+
+  it('subject has no declared github → kind=absent (status partial, user null)', () => {
+    const result = githubResult('partial', githubFindings(null, []));
+    const ev = adaptAgentResultsToEvidence([result]);
+    expect(ev.github.kind).toBe('absent');
+  });
+
+  it('github agent error (no token) → kind=error', () => {
+    const result = githubResult('error', null, 'github: GITHUB_TOKEN is not set');
+    const ev = adaptAgentResultsToEvidence([result]);
+    expect(ev.github.kind).toBe('error');
+  });
+
+  it('github status ok but malformed findings → kind=error', () => {
+    const malformed: AgentResult<unknown> = {
+      agentId: GITHUB_AGENT_ID,
+      agentVersion: '1.0.0',
+      runUuid: 'r',
+      runStartedAt: 0,
+      runFinishedAt: 1,
+      status: 'ok',
+      findings: { not: 'the right shape' },
+      provenance: {
+        backend: { kind: 'rest-api', baseUrl: 'http://test', version: '2022-11-28' },
+        inputHash: '0x',
+      },
+    };
+    const ev = adaptAgentResultsToEvidence([malformed]);
+    expect(ev.github.kind).toBe('error');
+  });
+
+  it('both Sourcify and GitHub present → both branches populated independently', () => {
+    const sourcify = sourcifyResult(
+      findings([
+        {
+          chainId: 1,
+          address: `0x${'a'.repeat(40)}` as `0x${string}`,
+          match: 'exact_match',
+          compilerVersion: null,
+          language: null,
+          contractName: null,
+        },
+      ]),
+    );
+    const github = githubResult(
+      'ok',
+      githubFindings({ login: 'alice', createdAt: null, publicRepos: 1 }, [
+        {
+          name: 'alpha',
+          fullName: 'alice/alpha',
+          pushedAt: '2026-05-01T00:00:00Z',
+          stars: 1,
+          hasTestDir: true,
+          hasSubstantialReadme: false,
+          hasLicense: true,
+        },
+      ]),
+    );
+    const ev = adaptAgentResultsToEvidence([sourcify, github]);
+    expect(ev.sourcify).toHaveLength(1);
+    expect(ev.github.kind).toBe('ok');
+    if (ev.github.kind === 'ok') {
+      expect(ev.github.value.user?.login).toBe('alice');
+      expect(ev.github.value.repos).toHaveLength(1);
+    }
   });
 });
