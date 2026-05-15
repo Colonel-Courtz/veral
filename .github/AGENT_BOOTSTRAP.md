@@ -26,17 +26,53 @@ If any of those four files contradict what is written below, those files win.
 
 ## 2. Boundaries you must not cross
 
-**Never** in any task:
+This session runs under `--dangerously-skip-permissions`. The
+`.claude/hooks/agent-guard.mjs` hook hard-blocks every action listed below; if
+you try one, the tool call exits with code 2 and your task fails. Do not try
+to work around the hook — the hook protects itself (see `.claude/` write
+restriction).
 
-- Modify `CLAUDE.md`, `LICENSE`, `.github/CODEOWNERS`, `.github/workflows/deploy-production.yml`, `docs/architecture/*`, `biome.json`, `lefthook.yml`, or `contracts/` — these are Daniel-only.
-- Run `vercel deploy`, `vercel env *`, `pnpm publish`, or any command that touches production secrets, ENS records, or real funds.
-- Read, copy, log, or transmit the contents of `.env*` files. Never `cat .env`, never paste into a tool result, never include in a prompt.
-- Edit `package.json` dependencies without an explicit ADR or Daniel comment on the issue.
-- Force-push, delete branches you did not create, or rewrite history.
-- Pick up an issue tagged `requires:daniel` or `requires:human-review` without explicit Daniel comment unblocking it.
-- Pick up an issue tagged `agent-claimed` — another agent is on it.
+**Hard-blocked file writes** (you cannot Write or Edit these):
 
-If the task requires any of the above, **stop and escalate** per `CONTRIBUTING.md`.
+- `CLAUDE.md`, `LICENSE`, `README.md`, `CONTRIBUTING.md`
+- `.github/CODEOWNERS`, `.github/workflows/*`, `.github/AGENT_BOOTSTRAP.md`, `.github/LAUNCH_PLAYBOOK.md`, `.github/PULL_REQUEST_TEMPLATE.md`, `.github/dependabot.yml`, `.github/ISSUE_TEMPLATE/*`
+- `contracts/*`, `docs/architecture/*`
+- `biome.json`, `lefthook.yml`, `commitlint.config.cjs`, `pnpm-workspace.yaml`, `pnpm-lock.yaml`, `tsconfig.base.json`, root `package.json`, `.gitignore`
+- `.claude/*` (the guardrails themselves)
+- `scripts/seed-issues.sh`, `scripts/lint-comments.mjs`
+- Anywhere outside the repo root (except `/tmp/` for ephemeral scripts)
+
+**Hard-blocked file reads**:
+
+- `.env`, `.env.local`, `.env.production`, `.env.<anything>` — only `.env.example` is allowed
+- Anywhere outside the repo, except `/Users/danielbabjak/Desktop/ETHPrague2026/` (prior hackathon codebase, reference only) and `/tmp/`
+
+**Hard-blocked bash commands**:
+
+- Privilege escalation: `sudo`, `su`, `doas`
+- Destructive: `rm -rf`, `rm -fr`, `rm -r`, `rm -f`, `find ... -delete`, `git clean -*`, `shred`, `wipe`
+- Git destructive: `git push --force*`, `git reset --hard`, `git branch -D`, `git filter-branch`, `git filter-repo`, `git config user.*`, `git rebase -i`, `git push <remote> main`
+- Deploy: any `vercel *` command
+- Publish: `pnpm publish`, `npm publish`, `yarn publish`
+- Dep installs with args: `pnpm add *`, `pnpm install <pkg>`, `pip install`, `brew install` (only `pnpm install --frozen-lockfile` is allowed)
+- Solidity broadcasts: `forge create`, `forge script ... --broadcast`, `cast send`, `cast wallet *`
+- RCE: `curl ... | bash`, `wget ... | sh`
+- System control: `kill`, `pkill`, `reboot`, `shutdown`, `launchctl`, `systemctl`
+- Remote: `ssh`, `scp`, `rsync`, `nc`, `ncat`
+- Disable own guardrails: `lefthook uninstall`, `chmod ... .claude/*`, redirect into `.claude/`
+- `.env` exfiltration via shell verbs: `cat .env`, `grep .env`, `curl ... .env`, etc.
+
+**Hard-blocked network hosts** (curl/wget): only allowlisted hosts succeed.
+Allowlist includes GitHub, Sourcify, Etherscan, Alchemy, CoinGecko, NPM
+registry, The Graph, EAS. Any other host: blocked.
+
+**Issue rules**:
+
+- Do not pick up `requires:daniel`, `requires:human-review`, or `agent-claimed` issues.
+- Do not work on an issue whose `Depends on:` list has any open item.
+
+If the task requires any blocked action, **stop and escalate** per `CONTRIBUTING.md`.
+The hook will not yield. Asking Daniel to bypass it is the only path.
 
 ---
 
