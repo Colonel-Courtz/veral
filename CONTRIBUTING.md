@@ -104,6 +104,62 @@ If you are an AI agent (Claude, OpenAI Codex, or similar):
 5. Run lint and tests locally before committing
 6. If you encounter an architectural ambiguity, open an issue (do not invent)
 
+### Stub-first workflow
+
+For any new cross-package surface (a new contract type, an exported function
+consumed by another package, an EAS schema field, an environment variable):
+
+1. Add the type / signature / stub to the producing package with a clear
+   `throw new Error('not implemented')` body.
+2. Update consumers to import the stub and typecheck against it.
+3. Open a PR labelled `stub` that lands the surface across the workspace.
+4. Land the implementation in a follow-up PR. The stub PR unblocks parallel
+   agent work; the implementation PR proves correctness.
+
+This prevents the most common multi-agent failure mode: two agents inventing
+incompatible shapes for the same boundary.
+
+### Escalation procedure
+
+If a task cannot be completed by an agent without violating a rule or without
+inventing missing information, do NOT proceed by guessing. Stop and escalate:
+
+1. **Missing input** (env var, ENS record, contract address, schema UID): post
+   a comment on the issue with the exact name + where it is expected to come
+   from. Add the `requires:daniel` label. Do not stub the value.
+2. **Ambiguous spec** (two valid interpretations of the issue): post a comment
+   listing both interpretations + your recommendation, add the
+   `requires:human-review` label, and wait for an answer before writing code.
+3. **Rule conflict** (the spec asks for something CLAUDE.md forbids): treat
+   the rule as primary and the spec as a request to update the rule. Open a
+   new issue proposing the rule change with a clear motivation; do not silently
+   violate the rule.
+
+Hallucinated values that pass typecheck but are wrong in reality are the most
+expensive failure mode in this codebase. An open question is cheaper than a
+wrong answer that ships.
+
+### Pre-defined cross-package contracts
+
+Cross-package shapes live in [`packages/shared/src/contracts/`](./packages/shared/src/contracts/).
+These are the canonical types — do not re-define them inside `@veral/core`,
+`@veral/authority`, `@veral/attest`, or `@veral/sources`. Importing the
+contract type guarantees compatibility across the workspace:
+
+- `TierEligibilityResult` — authority gate output
+- `PaymentVerification` — payment verifier output
+- `EvidenceBundle` — assembled per-run evidence
+- `ScoreResult` — score formula output
+- `IssuanceResult` — EAS attestation outcome
+- `ManifestVerificationResult` — ENS manifest signer check
+- `OrchestrationInput` / `OrchestrationOutput` — `@veral/core` orchestrator IO
+
+Provenance helpers (`canonicalJson`, `sha256Hex`, `hashCanonical`,
+`buildProvenance`) live in `@veral/shared/agents/provenance.ts`. Use them for
+every agent's input/output hashing — do not implement ad-hoc hashing. The
+canonical-JSON serializer is what makes cross-agent and cross-run hash
+comparison meaningful.
+
 ## Code of conduct
 
 Be direct. Be technical. Avoid hype. No emoji. No marketing language in code
