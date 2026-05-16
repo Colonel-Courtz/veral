@@ -100,3 +100,35 @@ describe('publicReadFallback', () => {
     expect(result.sourcify).toEqual([]);
   });
 });
+
+describe('buildEnsReaderFromEnv', () => {
+  it('throws SubjectResolverConfigError when ALCHEMY_RPC_URL_MAINNET is missing', async () => {
+    const { buildEnsReaderFromEnv } = await import('../public-read-fallback');
+    const { SubjectResolverConfigError } = await import('@veral/shared');
+    const original = process.env.ALCHEMY_RPC_URL_MAINNET;
+    delete process.env.ALCHEMY_RPC_URL_MAINNET;
+    try {
+      expect(() => buildEnsReaderFromEnv()).toThrow(SubjectResolverConfigError);
+      expect(() => buildEnsReaderFromEnv()).toThrow(/ALCHEMY_RPC_URL_MAINNET/);
+    } finally {
+      if (original !== undefined) process.env.ALCHEMY_RPC_URL_MAINNET = original;
+    }
+  });
+
+  it('throws SubjectResolverConfigError when ALCHEMY_RPC_URL_SEPOLIA is missing', async () => {
+    const { buildEnsReaderFromEnv } = await import('../public-read-fallback');
+    const { SubjectResolverConfigError } = await import('@veral/shared');
+    const originalMain = process.env.ALCHEMY_RPC_URL_MAINNET;
+    const originalSep = process.env.ALCHEMY_RPC_URL_SEPOLIA;
+    process.env.ALCHEMY_RPC_URL_MAINNET = 'https://eth-mainnet.g.alchemy.com/v2/test';
+    delete process.env.ALCHEMY_RPC_URL_SEPOLIA;
+    try {
+      expect(() => buildEnsReaderFromEnv()).toThrow(SubjectResolverConfigError);
+      expect(() => buildEnsReaderFromEnv()).toThrow(/ALCHEMY_RPC_URL_SEPOLIA/);
+    } finally {
+      if (originalMain !== undefined) process.env.ALCHEMY_RPC_URL_MAINNET = originalMain;
+      else delete process.env.ALCHEMY_RPC_URL_MAINNET;
+      if (originalSep !== undefined) process.env.ALCHEMY_RPC_URL_SEPOLIA = originalSep;
+    }
+  });
+});

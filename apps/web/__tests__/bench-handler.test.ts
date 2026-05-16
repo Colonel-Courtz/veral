@@ -7,7 +7,7 @@ vi.hoisted(() => {
 });
 
 import type { AgentResult, AgentStatus, SubjectManifest } from '@veral/shared';
-import { SubjectResolutionError, VeralError } from '@veral/shared';
+import { SubjectResolutionError, SubjectResolverConfigError, VeralError } from '@veral/shared';
 
 import { BenchHandlerError, computeBenchScore } from '../lib/bench-handler.js';
 import { ETHEREUM_AGENT_ID, GITHUB_AGENT_ID, SOURCIFY_AGENT_ID } from '../lib/score-adapter.js';
@@ -231,6 +231,19 @@ describe('computeBenchScore', () => {
         },
       }),
     ).rejects.toMatchObject({ status: 404, code: 'NOT_FOUND' });
+  });
+
+  it('translates SubjectResolverConfigError into 503 SERVICE_UNAVAILABLE', async () => {
+    await expect(
+      computeBenchScore('alice.eth', {
+        resolveSubject: async () => {
+          throw new SubjectResolverConfigError('ALCHEMY_RPC_URL_MAINNET is not set');
+        },
+        orchestrate: async () => {
+          throw new Error('should not be called');
+        },
+      }),
+    ).rejects.toMatchObject({ status: 503, code: 'SERVICE_UNAVAILABLE' });
   });
 
   it('translates other VeralError from resolver into 502 BAD_GATEWAY', async () => {

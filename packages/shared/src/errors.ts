@@ -15,6 +15,17 @@ export class SubjectResolutionError extends VeralError {
   }
 }
 
+// Server is misconfigured for subject resolution (e.g. missing RPC URL
+// env var). Distinct from SubjectResolutionError so callers can map
+// "we cannot resolve any subject right now" to 503 SERVICE_UNAVAILABLE
+// instead of misleading the user with 404 NOT_FOUND.
+export class SubjectResolverConfigError extends VeralError {
+  constructor(message: string, options?: { cause?: unknown }) {
+    super('SUBJECT_RESOLVER_CONFIG_ERROR', message, options);
+    this.name = 'SubjectResolverConfigError';
+  }
+}
+
 export class TierEligibilityError extends VeralError {
   constructor(message: string, options?: { cause?: unknown }) {
     super('TIER_ELIGIBILITY_ERROR', message, options);

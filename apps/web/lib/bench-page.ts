@@ -57,6 +57,13 @@ export function errorPanelContent(code: BenchHandlerErrorCode): ErrorPanelConten
       hint: 'If you own this name, publish a veral.bench-manifest text record to opt into Anchored or Sealed.',
     };
   }
+  if (code === 'SERVICE_UNAVAILABLE') {
+    return {
+      title: 'Service temporarily unavailable',
+      body: 'Veral could not reach its data sources for this request.',
+      hint: 'The server is missing a required configuration value. Retry shortly; if the failure persists, the operator has been alerted.',
+    };
+  }
   if (code === 'BAD_GATEWAY') {
     return {
       title: 'Upstream data source temporarily unavailable',

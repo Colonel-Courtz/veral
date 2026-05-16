@@ -75,7 +75,13 @@ describe('agentStatusDisplay', () => {
 
 describe('errorPanelContent', () => {
   it('produces a distinct title for every BenchHandler error code', () => {
-    const codes = ['BAD_REQUEST', 'NOT_FOUND', 'BAD_GATEWAY', 'INTERNAL'] as const;
+    const codes = [
+      'BAD_REQUEST',
+      'NOT_FOUND',
+      'SERVICE_UNAVAILABLE',
+      'BAD_GATEWAY',
+      'INTERNAL',
+    ] as const;
     const titles = new Set(codes.map((c) => errorPanelContent(c).title));
     expect(titles.size).toBe(codes.length);
   });
@@ -83,8 +89,18 @@ describe('errorPanelContent', () => {
   it('attaches a hint to the user-fixable cases (400/404/502) but omits it for 500', () => {
     expect(errorPanelContent('BAD_REQUEST').hint).toBeDefined();
     expect(errorPanelContent('NOT_FOUND').hint).toBeDefined();
+    expect(errorPanelContent('SERVICE_UNAVAILABLE').hint).toBeDefined();
     expect(errorPanelContent('BAD_GATEWAY').hint).toBeDefined();
     expect(errorPanelContent('INTERNAL').hint).toBeUndefined();
+  });
+
+  it('maps SERVICE_UNAVAILABLE to operator-config copy distinct from BAD_GATEWAY', () => {
+    const service = errorPanelContent('SERVICE_UNAVAILABLE');
+    const gateway = errorPanelContent('BAD_GATEWAY');
+    expect(service.title).toBe('Service temporarily unavailable');
+    expect(service.hint).toMatch(/configuration/);
+    expect(service.title).not.toBe(gateway.title);
+    expect(service.hint).not.toBe(gateway.hint);
   });
 });
 

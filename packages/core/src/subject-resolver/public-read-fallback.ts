@@ -84,7 +84,7 @@ export async function publicReadFallback(
   };
 }
 
-import { SubjectResolutionError } from '@veral/shared';
+import { SubjectResolverConfigError } from '@veral/shared';
 import { createPublicClient, http } from 'viem';
 import { mainnet, sepolia } from 'viem/chains';
 import { normalize } from 'viem/ens';
@@ -95,12 +95,12 @@ export function buildEnsReaderFromEnv(
   const mainnetUrl = options.mainnetRpcUrl ?? process.env.ALCHEMY_RPC_URL_MAINNET;
   const sepoliaUrl = options.sepoliaRpcUrl ?? process.env.ALCHEMY_RPC_URL_SEPOLIA;
   if (!mainnetUrl) {
-    throw new SubjectResolutionError(
+    throw new SubjectResolverConfigError(
       'ALCHEMY_RPC_URL_MAINNET is not set and no mainnetRpcUrl override supplied',
     );
   }
   if (!sepoliaUrl) {
-    throw new SubjectResolutionError(
+    throw new SubjectResolverConfigError(
       'ALCHEMY_RPC_URL_SEPOLIA is not set and no sepoliaRpcUrl override supplied',
     );
   }

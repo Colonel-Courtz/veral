@@ -2,7 +2,7 @@ import { orchestrate } from '@veral/authority';
 import { resolveSubject } from '@veral/core';
 import { computeForVersion } from '@veral/score';
 import type { AgentResult, AgentStatus, ScoreResult, SubjectManifest } from '@veral/shared';
-import { SubjectResolutionError, VeralError } from '@veral/shared';
+import { SubjectResolutionError, SubjectResolverConfigError, VeralError } from '@veral/shared';
 
 import { adaptAgentResultsToEvidence } from './score-adapter';
 
@@ -24,7 +24,12 @@ function domainForAgentId(agentId: string): string {
   return AGENT_DOMAIN_BY_ID[agentId] ?? agentId;
 }
 
-export type BenchHandlerErrorCode = 'BAD_REQUEST' | 'NOT_FOUND' | 'BAD_GATEWAY' | 'INTERNAL';
+export type BenchHandlerErrorCode =
+  | 'BAD_REQUEST'
+  | 'NOT_FOUND'
+  | 'SERVICE_UNAVAILABLE'
+  | 'BAD_GATEWAY'
+  | 'INTERNAL';
 
 export class BenchHandlerError extends Error {
   readonly status: number;
@@ -86,6 +91,12 @@ async function resolveSubjectOrThrow(
   try {
     return await resolve(ensName);
   } catch (err) {
+    // Config errors come first so a misconfigured resolver (e.g.
+    // missing RPC URL env var) surfaces as 503 instead of misleading
+    // the user with a 404 "subject not resolveable" response.
+    if (err instanceof SubjectResolverConfigError) {
+      throw new BenchHandlerError(503, 'SERVICE_UNAVAILABLE', err.message);
+    }
     if (err instanceof SubjectResolutionError) {
       throw new BenchHandlerError(404, 'NOT_FOUND', err.message);
     }
