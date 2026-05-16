@@ -2,13 +2,21 @@ import type {
   GithubEvidence,
   GithubRepoP0,
   MultiSourceEvidence,
+  OnchainActivity,
+  OnchainEntryEvidence,
   SourcifyEntryEvidence,
 } from '@veral/score/v1.0';
 import type { AgentResult } from '@veral/shared';
-import type { GithubFindings, SourcifyFindings, SourcifyMatchLevel } from '@veral/sources';
+import type {
+  EthereumFindings,
+  GithubFindings,
+  SourcifyFindings,
+  SourcifyMatchLevel,
+} from '@veral/sources';
 
 export const SOURCIFY_AGENT_ID = 'sourcify-extract' as const;
 export const GITHUB_AGENT_ID = 'github-extract' as const;
+export const ETHEREUM_AGENT_ID = 'ethereum-extract' as const;
 
 // The score engine consumes a typed evidence object (sourcify / github /
 // onchain / ensInternal). Each agent registered in
@@ -55,6 +63,17 @@ function isGithubFindings(value: unknown): value is GithubFindings {
   return obj.trust === 'unverified' && Array.isArray(obj.repos);
 }
 
+function isEthereumFindings(value: unknown): value is EthereumFindings {
+  if (typeof value !== 'object' || value === null) return false;
+  const obj = value as Record<string, unknown>;
+  return (
+    obj.trust === 'verified' &&
+    typeof obj.nonce === 'number' &&
+    typeof obj.latestBlock === 'number' &&
+    typeof obj.chainId === 'number'
+  );
+}
+
 function toGithubRepoP0(repo: GithubFindings['repos'][number]): GithubRepoP0 {
   // P0 surface only — pushedAt, hasTestDir, hasSubstantialReadme,
   // hasLicense. P1 fields (hasSecurity / hasDependabot /
@@ -86,26 +105,71 @@ function mapGithubResult(result: AgentResult<unknown>): GithubEvidence {
   };
 }
 
+function toOnchainActivity(findings: EthereumFindings): OnchainActivity {
+  // The agent stores block numbers as `number` for JSON-cache safety;
+  // the score engine consumes `bigint`. Conversion lives here so the
+  // type widening happens at exactly one boundary and a future change
+  // to either side does not silently lose precision.
+  return {
+    nonce: findings.nonce,
+    firstTxBlock: findings.firstTxBlock !== null ? BigInt(findings.firstTxBlock) : null,
+    latestBlock: BigInt(findings.latestBlock),
+    transferCountRecent90d: findings.transferCountRecent90d,
+    transferCountProvider: findings.transferCountProvider,
+  };
+}
+
+function fallbackChainId(value: unknown): number {
+  // Error-path chainId source: prefer findings.chainId when present,
+  // otherwise default to mainnet so the score engine's resolveNowBlock
+  // can still find a mainnet onchain entry even on malformed payloads.
+  if (typeof value === 'object' && value !== null) {
+    const candidate = (value as Record<string, unknown>).chainId;
+    if (typeof candidate === 'number' && Number.isInteger(candidate) && candidate > 0) {
+      return candidate;
+    }
+  }
+  return 1;
+}
+
+function mapEthereumResult(result: AgentResult<unknown>): OnchainEntryEvidence | null {
+  if (result.status === 'partial') return null;
+  if (result.status === 'error' || !isEthereumFindings(result.findings)) {
+    return { kind: 'error', chainId: fallbackChainId(result.findings) };
+  }
+  return {
+    kind: 'ok',
+    chainId: result.findings.chainId,
+    value: toOnchainActivity(result.findings),
+  };
+}
+
+function mapSourcifyResult(result: AgentResult<unknown>): ReadonlyArray<SourcifyEntryEvidence> {
+  if (result.status !== 'ok' || !isSourcifyFindings(result.findings)) return [];
+  return result.findings.contracts.map((contract) => toSourcifyEntryEvidence(contract.match));
+}
+
 export function adaptAgentResultsToEvidence(
   agentResults: ReadonlyArray<AgentResult<unknown>>,
 ): MultiSourceEvidence {
   const sourcify: SourcifyEntryEvidence[] = [];
   let github: GithubEvidence = { kind: 'absent' };
+  const onchain: OnchainEntryEvidence[] = [];
   for (const result of agentResults) {
     if (result.agentId === SOURCIFY_AGENT_ID) {
-      if (result.status !== 'ok' || !isSourcifyFindings(result.findings)) continue;
-      for (const contract of result.findings.contracts) {
-        sourcify.push(toSourcifyEntryEvidence(contract.match));
-      }
+      sourcify.push(...mapSourcifyResult(result));
     } else if (result.agentId === GITHUB_AGENT_ID) {
       github = mapGithubResult(result);
+    } else if (result.agentId === ETHEREUM_AGENT_ID) {
+      const entry = mapEthereumResult(result);
+      if (entry !== null) onchain.push(entry);
     }
   }
   return {
     subject: { mode: 'manifest', manifest: null },
     sourcify,
     github,
-    onchain: [],
+    onchain,
     ensInternal: { kind: 'absent' },
   };
 }
