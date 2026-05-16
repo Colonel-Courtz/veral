@@ -375,16 +375,124 @@ async function probeLicense(ctx: ClientContext, fullName: string): Promise<boole
   return result.kind === 'ok';
 }
 
+function parseWorkflowRuns(
+  raw: unknown,
+): { readonly successful: number; readonly total: number } | null {
+  const obj = asObject(raw);
+  if (obj === null) return null;
+  const runs = obj.workflow_runs;
+  if (!Array.isArray(runs)) return null;
+  let successful = 0;
+  for (const run of runs) {
+    const runObj = asObject(run);
+    if (runObj !== null && runObj.conclusion === 'success') successful += 1;
+  }
+  const reportedTotal = asInteger(obj.total_count);
+  // total_count is GitHub's authoritative count (may exceed per_page
+  // when more runs exist than fit in the page). When absent, fall back
+  // to the array length so the ratio remains correct for the sampled
+  // window.
+  const total = reportedTotal ?? runs.length;
+  return { successful, total };
+}
+
+// P1 enrichment endpoints are best-effort: a 404 typically means the
+// feature is disabled for the repo (Actions, Issues), and any other
+// failure is preferable to aborting the whole enrichment. Each helper
+// returns null on absent / error and leaves callBudget incremented by
+// the underlying probe.
+async function probeCiRuns(
+  ctx: ClientContext,
+  fullName: string,
+): Promise<{ readonly successful: number; readonly total: number } | null> {
+  const result = await probe(
+    ctx,
+    `${ctx.baseUrl}/repos/${fullName}/actions/runs?per_page=100&status=completed`,
+    parseWorkflowRuns,
+  ).catch(() => ({ kind: 'absent' as const }));
+  return result.kind === 'ok' ? result.value : null;
+}
+
+function parseIssueArrayLength(raw: unknown): number | null {
+  if (!Array.isArray(raw)) return null;
+  return raw.length;
+}
+
+async function probeBugIssues(
+  ctx: ClientContext,
+  fullName: string,
+): Promise<{ readonly closed: number; readonly total: number } | null> {
+  const [closed, all] = await Promise.all([
+    probe(
+      ctx,
+      `${ctx.baseUrl}/repos/${fullName}/issues?state=closed&labels=bug&per_page=100`,
+      parseIssueArrayLength,
+    ).catch(() => ({ kind: 'absent' as const })),
+    probe(
+      ctx,
+      `${ctx.baseUrl}/repos/${fullName}/issues?state=all&labels=bug&per_page=100`,
+      parseIssueArrayLength,
+    ).catch(() => ({ kind: 'absent' as const })),
+  ]);
+  if (closed.kind !== 'ok' || all.kind !== 'ok') return null;
+  return { closed: closed.value, total: all.value };
+}
+
+// 12 * 30 * 86400 seconds matches the issue spec verbatim; using a
+// fixed 360-day window keeps the result deterministic regardless of
+// month length and avoids importing a date library.
+const RELEASE_WINDOW_SECONDS = 12 * 30 * 86_400;
+
+function publishedAtSecondsInWindow(item: unknown, cutoffSeconds: number): boolean {
+  const obj = asObject(item);
+  if (obj === null) return false;
+  const publishedAt = asString(obj.published_at);
+  if (publishedAt === null) return false;
+  const ts = Date.parse(publishedAt);
+  if (!Number.isFinite(ts)) return false;
+  return ts / 1000 >= cutoffSeconds;
+}
+
+function makeReleaseCounter(nowSeconds: number) {
+  return (raw: unknown): number | null => {
+    if (!Array.isArray(raw)) return null;
+    const cutoff = nowSeconds - RELEASE_WINDOW_SECONDS;
+    let count = 0;
+    for (const item of raw) {
+      if (publishedAtSecondsInWindow(item, cutoff)) count += 1;
+    }
+    return count;
+  };
+}
+
+async function probeReleases(
+  ctx: ClientContext,
+  fullName: string,
+  nowSeconds: number,
+): Promise<number | null> {
+  const result = await probe(
+    ctx,
+    `${ctx.baseUrl}/repos/${fullName}/releases?per_page=100`,
+    makeReleaseCounter(nowSeconds),
+  ).catch(() => ({ kind: 'absent' as const }));
+  return result.kind === 'ok' ? result.value : null;
+}
+
 async function enrichRepo(
   ctx: ClientContext,
   raw: RawRepo,
   thresholdBytes: number,
+  nowSeconds: number,
 ): Promise<GithubRepo> {
-  const [hasTestDir, hasSubstantialReadme, hasLicense] = await Promise.all([
-    probeTestDir(ctx, raw.fullName),
-    probeReadme(ctx, raw.fullName, thresholdBytes),
-    probeLicense(ctx, raw.fullName),
-  ]);
+  const [hasTestDir, hasSubstantialReadme, hasLicense, ciRuns, bugIssues, releasesLast12m] =
+    await Promise.all([
+      probeTestDir(ctx, raw.fullName),
+      probeReadme(ctx, raw.fullName, thresholdBytes),
+      probeLicense(ctx, raw.fullName),
+      probeCiRuns(ctx, raw.fullName),
+      probeBugIssues(ctx, raw.fullName),
+      probeReleases(ctx, raw.fullName, nowSeconds),
+    ]);
   return {
     name: raw.name,
     fullName: raw.fullName,
@@ -393,6 +501,9 @@ async function enrichRepo(
     hasTestDir,
     hasSubstantialReadme,
     hasLicense,
+    ciRuns,
+    bugIssues,
+    releasesLast12m,
   };
 }
 
@@ -403,11 +514,12 @@ export interface GithubFetchResult {
 }
 
 // Call budget per subject:
-//   1 (user) + 1 (graphql top-repo list) + 20 repos × (4 test probes + 1 README + 1 LICENSE) = 122.
-// GraphQL replaces the REST /users/{owner}/repos call; per-repo
-// hygiene probes stay on REST because they have no GraphQL equivalent.
-// Stays well below GitHub's 5000/h authed-rate-limit assuming ~40
-// subjects per hour per token.
+//   1 (user) + 1 (graphql top-repo list)
+//   + 20 repos × (4 test probes + 1 README + 1 LICENSE + 1 CI + 2 bug issue + 1 releases) = 202.
+// P1 endpoints (CI / Issues / Releases) add ~4 calls per repo. Still
+// well below GitHub's 5000/h authed-rate-limit assuming ~25 subjects
+// per hour per token. Per-endpoint failures degrade to null without
+// aborting the whole enrichment.
 export async function fetchGithubP0(
   owner: string,
   options: GithubClientOptions,
@@ -427,7 +539,10 @@ export async function fetchGithubP0(
   if (ctx.externalSignal?.aborted) {
     throw new GithubFetchError('network_error', 'github: aborted after repo list fetch');
   }
-  const repos = await Promise.all(rawRepos.map((raw) => enrichRepo(ctx, raw, thresholdBytes)));
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  const repos = await Promise.all(
+    rawRepos.map((raw) => enrichRepo(ctx, raw, thresholdBytes, nowSeconds)),
+  );
 
   return { user, repos, callBudget: ctx.callBudget.count };
 }

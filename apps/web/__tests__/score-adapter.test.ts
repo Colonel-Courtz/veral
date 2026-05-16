@@ -320,11 +320,14 @@ describe('adaptAgentResultsToEvidence — GitHub branch', () => {
         hasTestDir: true,
         hasSubstantialReadme: true,
         hasLicense: true,
+        ciRuns: null,
+        bugIssues: null,
+        releasesLast12m: null,
       });
     }
   });
 
-  it('does NOT invent P1 fields on the mapped repos', () => {
+  it('does NOT invent P1 boolean flags; normalises missing P1 counts to null', () => {
     const result = githubResult(
       'ok',
       githubFindings({ login: 'alice', createdAt: null, publicRepos: 1 }, [
@@ -342,18 +345,47 @@ describe('adaptAgentResultsToEvidence — GitHub branch', () => {
     const ev = adaptAgentResultsToEvidence([result]);
     if (ev.github.kind === 'ok') {
       const repo = ev.github.value.repos[0];
-      // Score engine's repoHygiene reads typeof flag === 'boolean'.
-      // undefined here means "P1 didn't run" and the engine excludes
-      // the field from the denominator — exactly the behavior we want.
       expect(repo).toBeDefined();
       if (repo) {
+        // Boolean P1 flags stay undefined — the agent does not surface
+        // them and repoHygiene excludes undefined from its denominator.
         expect(repo.hasSecurity).toBeUndefined();
         expect(repo.hasDependabot).toBeUndefined();
         expect(repo.hasBranchProtection).toBeUndefined();
-        expect(repo.ciRuns).toBeUndefined();
-        expect(repo.bugIssues).toBeUndefined();
-        expect(repo.releasesLast12m).toBeUndefined();
+        // Counted P1 fields are explicit null when upstream omits them,
+        // because ciPassRate / bugHygiene / releaseCadence read null as
+        // "P1 didn't run" and skip the repo from the ratio.
+        expect(repo.ciRuns).toBeNull();
+        expect(repo.bugIssues).toBeNull();
+        expect(repo.releasesLast12m).toBeNull();
       }
+    }
+  });
+
+  it('passes through P1 counts (ciRuns, bugIssues, releasesLast12m) unchanged when populated', () => {
+    const result = githubResult(
+      'ok',
+      githubFindings({ login: 'alice', createdAt: null, publicRepos: 1 }, [
+        {
+          name: 'alpha',
+          fullName: 'alice/alpha',
+          pushedAt: '2026-05-01T00:00:00Z',
+          stars: 10,
+          hasTestDir: true,
+          hasSubstantialReadme: true,
+          hasLicense: true,
+          ciRuns: { successful: 90, total: 100 },
+          bugIssues: { closed: 30, total: 40 },
+          releasesLast12m: 6,
+        },
+      ]),
+    );
+    const ev = adaptAgentResultsToEvidence([result]);
+    if (ev.github.kind === 'ok') {
+      const repo = ev.github.value.repos[0];
+      expect(repo?.ciRuns).toEqual({ successful: 90, total: 100 });
+      expect(repo?.bugIssues).toEqual({ closed: 30, total: 40 });
+      expect(repo?.releasesLast12m).toBe(6);
     }
   });
 

@@ -79,16 +79,20 @@ function isEthereumFindings(value: unknown): value is EthereumFindings {
 }
 
 function toGithubRepoP0(repo: GithubFindings['repos'][number]): GithubRepoP0 {
-  // P0 surface only — pushedAt, hasTestDir, hasSubstantialReadme,
-  // hasLicense. P1 fields (hasSecurity / hasDependabot /
-  // hasBranchProtection / ciRuns / bugIssues / releasesLast12m) stay
-  // undefined; the score engine's repoHygiene treats undefined as
-  // "P1 didn't run for this repo" and only counts defined booleans.
+  // P1 boolean hygiene flags (hasSecurity / hasDependabot /
+  // hasBranchProtection) stay undefined — the agent does not surface
+  // them yet, and the score engine's repoHygiene excludes undefined
+  // booleans from the denominator. The ciPassRate / bugHygiene /
+  // releaseCadence components read explicit null as "P1 didn't run",
+  // so undefined is normalised to null here at the boundary.
   return {
     pushedAt: repo.pushedAt,
     hasTestDir: repo.hasTestDir,
     hasSubstantialReadme: repo.hasSubstantialReadme,
     hasLicense: repo.hasLicense,
+    ciRuns: repo.ciRuns ?? null,
+    bugIssues: repo.bugIssues ?? null,
+    releasesLast12m: repo.releasesLast12m ?? null,
   };
 }
 

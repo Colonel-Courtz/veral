@@ -16,6 +16,25 @@ export const githubRepoSchema = z.object({
   hasTestDir: z.boolean(),
   hasSubstantialReadme: z.boolean(),
   hasLicense: z.boolean(),
+  // P1 enrichment — optional + nullable so old fixtures stay valid and
+  // score engine treats either as "P1 didn't run". Populated by the
+  // client's per-repo probes; degrades to null on any per-endpoint
+  // failure (e.g. Actions disabled, Issues disabled, missing scope).
+  ciRuns: z
+    .object({
+      successful: z.number().int().min(0),
+      total: z.number().int().min(0),
+    })
+    .nullable()
+    .optional(),
+  bugIssues: z
+    .object({
+      closed: z.number().int().min(0),
+      total: z.number().int().min(0),
+    })
+    .nullable()
+    .optional(),
+  releasesLast12m: z.number().int().min(0).nullable().optional(),
 });
 
 export type GithubRepo = z.infer<typeof githubRepoSchema>;
