@@ -1,3 +1,5 @@
+import { mergeAbortSignals } from '@veral/shared';
+
 import type { GithubRepo, GithubUser } from './schema';
 
 export const DEFAULT_GITHUB_BASE_URL = 'https://api.github.com';
@@ -36,6 +38,10 @@ export interface GithubClientOptions {
   readonly timeoutMs?: number;
   readonly topRepoCap?: number;
   readonly readmeBytesThreshold?: number;
+  // Orchestrator-supplied cancellation. Threaded into every probe
+  // call and checked between sequential repo enrichments so an
+  // upstream timeout stops firing new HTTP requests promptly.
+  readonly signal?: AbortSignal;
 }
 
 interface ClientContext {
@@ -43,6 +49,7 @@ interface ClientContext {
   readonly baseUrl: string;
   readonly timeoutMs: number;
   readonly headers: Record<string, string>;
+  readonly externalSignal: AbortSignal | undefined;
   // The agent surfaces total HTTP calls in findings for cost observability.
   callBudget: { count: number };
 }
@@ -58,6 +65,7 @@ function buildContext(options: GithubClientOptions): ClientContext {
       'x-github-api-version': GITHUB_API_VERSION,
       'user-agent': 'veral-agent/1.0',
     },
+    externalSignal: options.signal,
     callBudget: { count: 0 },
   };
 }
@@ -92,14 +100,18 @@ async function probe<T>(
   parse: (raw: unknown) => T | null,
 ): Promise<ProbeResult<T>> {
   ctx.callBudget.count += 1;
+  if (ctx.externalSignal?.aborted) {
+    throw new GithubFetchError('network_error', `github: aborted before request to ${url}`);
+  }
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), ctx.timeoutMs);
+  const signal = mergeAbortSignals(controller.signal, ctx.externalSignal);
   let response: Response;
   try {
     response = await ctx.fetchImpl(url, {
       method: 'GET',
       headers: ctx.headers,
-      signal: controller.signal,
+      signal,
     });
   } catch (err) {
     throw new GithubFetchError(
@@ -304,7 +316,13 @@ export async function fetchGithubP0(
   const thresholdBytes = options.readmeBytesThreshold ?? DEFAULT_README_BYTES_THRESHOLD;
 
   const user = await fetchUser(ctx, owner);
+  if (ctx.externalSignal?.aborted) {
+    throw new GithubFetchError('network_error', 'github: aborted after user fetch');
+  }
   const rawRepos = await fetchTopRepos(ctx, owner, cap);
+  if (ctx.externalSignal?.aborted) {
+    throw new GithubFetchError('network_error', 'github: aborted after repo list fetch');
+  }
   const repos = await Promise.all(rawRepos.map((raw) => enrichRepo(ctx, raw, thresholdBytes)));
 
   return { user, repos, callBudget: ctx.callBudget.count };

@@ -186,4 +186,38 @@ describe('createSourcifyAgent', () => {
     expect(observed[0]?.key).toBe(`sourcify:1:${SUBJECT_ADDRESS.toLowerCase()}`);
     expect(observed[0]?.ttl).toBe(60 * 60 * 24);
   });
+
+  it('forwards AgentInput.signal to the fetch impl', async () => {
+    let observedSignal: AbortSignal | undefined;
+    const fetchImpl = stubFetch((_url, init) => {
+      observedSignal = init?.signal ?? undefined;
+      return jsonResponse({ match: 'exact_match', compilation: {} });
+    });
+    const agent = createSourcifyAgent({
+      baseUrl: 'http://sourcify.test',
+      fetchImpl,
+      cache: passThroughCache,
+    });
+    const externalController = new AbortController();
+    await agent.run({ ...makeInput(), signal: externalController.signal });
+    expect(observedSignal).toBeDefined();
+    expect(observedSignal?.aborted).toBe(false);
+  });
+
+  it('a pre-aborted external signal aborts the fetch signal', async () => {
+    let observedSignal: AbortSignal | undefined;
+    const fetchImpl = stubFetch((_url, init) => {
+      observedSignal = init?.signal ?? undefined;
+      return jsonResponse({ match: 'exact_match', compilation: {} });
+    });
+    const agent = createSourcifyAgent({
+      baseUrl: 'http://sourcify.test',
+      fetchImpl,
+      cache: passThroughCache,
+    });
+    const externalController = new AbortController();
+    externalController.abort();
+    await agent.run({ ...makeInput(), signal: externalController.signal });
+    expect(observedSignal?.aborted).toBe(true);
+  });
 });

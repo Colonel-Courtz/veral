@@ -224,4 +224,43 @@ describe('createEnsAgent', () => {
   it('rejects sepolia chainId at construction time', () => {
     expect(() => createEnsAgent({ chainId: 11155111 as unknown as 1 })).toThrow(/mainnet only/);
   });
+
+  it('a pre-aborted external signal makes the rpc stub see signal.aborted', async () => {
+    let observedAborted: boolean | undefined;
+    const rpc = {
+      async resolverAddress(_namehash: `0x${string}`, options?: { signal?: AbortSignal }) {
+        observedAborted = options?.signal?.aborted;
+        return RESOLVER;
+      },
+    };
+    const agent = createEnsAgent({
+      rpcClient: rpc,
+      fetchImpl: subgraphFetch(emptyDomainsBody()),
+      cache: passThroughCache,
+    });
+    const controller = new AbortController();
+    controller.abort();
+    await agent.run({ ...input(), signal: controller.signal });
+    expect(observedAborted).toBe(true);
+  });
+
+  it('forwards a non-aborted external signal into the subgraph fetch', async () => {
+    let observedSignal: AbortSignal | undefined;
+    const fetchImpl: EnsFetchImpl = async (_url, init) => {
+      observedSignal = init?.signal ?? undefined;
+      return new Response(JSON.stringify(emptyDomainsBody()), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    };
+    const agent = createEnsAgent({
+      rpcClient: rpcStub(RESOLVER),
+      fetchImpl,
+      cache: passThroughCache,
+    });
+    const controller = new AbortController();
+    await agent.run({ ...input(), signal: controller.signal });
+    expect(observedSignal).toBeDefined();
+    expect(observedSignal?.aborted).toBe(false);
+  });
 });

@@ -89,19 +89,36 @@ async function runWithTimeout(
   now: () => number,
 ): Promise<AgentResult<unknown>> {
   const runStartedAt = now();
+  const controller = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeoutPromise = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new AgentTimeoutError(agent.id, timeoutMs)), timeoutMs);
+    timer = setTimeout(() => {
+      // Abort BEFORE rejecting so the agent's in-flight fetch
+      // observes the abort and tears down its socket. The race
+      // settles on the timeout-error path either way.
+      controller.abort();
+      reject(new AgentTimeoutError(agent.id, timeoutMs));
+    }, timeoutMs);
   });
 
+  const agentPromise = agent.run({ ...input, signal: controller.signal });
+  // Attach a no-op rejection handler so Node does not warn if the
+  // race winner is the timeout and the agent's promise settles
+  // late with an abort-induced rejection. Promise.race below still
+  // observes the rejection independently.
+  agentPromise.catch(() => undefined);
+
   try {
-    return await Promise.race([agent.run(input), timeoutPromise]);
+    return await Promise.race([agentPromise, timeoutPromise]);
   } catch (err) {
     const cause: 'throw' | 'timeout' = err instanceof AgentTimeoutError ? 'timeout' : 'throw';
     const errorMessage = err instanceof Error ? err.message : String(err);
     return buildErrorResult(agent, input, runStartedAt, now(), errorMessage, cause);
   } finally {
     if (timer !== undefined) clearTimeout(timer);
+    // Defensive: release any background work the agent might still
+    // hold open even on success/throw. No-op when already aborted.
+    if (!controller.signal.aborted) controller.abort();
   }
 }
 

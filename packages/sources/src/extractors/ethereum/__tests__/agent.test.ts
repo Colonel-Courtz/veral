@@ -224,4 +224,50 @@ describe('createEthereumAgent', () => {
       provider: 'alchemy',
     });
   });
+
+  it('a pre-aborted external signal short-circuits the head probe', async () => {
+    let calls = 0;
+    const client: EthereumRpcClient = {
+      async getBlockNumber() {
+        calls += 1;
+        return 1n;
+      },
+      async getTransactionCount() {
+        calls += 1;
+        return 0;
+      },
+      async getBlock() {
+        calls += 1;
+        return { timestamp: 0n };
+      },
+    };
+    const agent = createEthereumAgent({ client, cache: passThroughCache });
+    const controller = new AbortController();
+    controller.abort();
+    const result = await agent.run({ ...input(), signal: controller.signal });
+    expect(result.status).toBe('error');
+    expect(result.provenance.errorMessage).toMatch(/aborted/);
+    expect(calls).toBe(0);
+  });
+
+  it('forwards a non-aborted external signal into RPC method args', async () => {
+    let observedHead: AbortSignal | undefined;
+    const client: EthereumRpcClient = {
+      async getBlockNumber(args) {
+        observedHead = args?.signal;
+        return 1n;
+      },
+      async getTransactionCount() {
+        return 0;
+      },
+      async getBlock() {
+        return { timestamp: 0n };
+      },
+    };
+    const agent = createEthereumAgent({ client, cache: passThroughCache });
+    const controller = new AbortController();
+    await agent.run({ ...input(), signal: controller.signal });
+    expect(observedHead).toBeDefined();
+    expect(observedHead?.aborted).toBe(false);
+  });
 });

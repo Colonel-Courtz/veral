@@ -167,6 +167,7 @@ export function createEthereumAgent(
         ...(options.mainnetRpcUrl ? { mainnetRpcUrl: options.mainnetRpcUrl } : {}),
         ...(options.sepoliaRpcUrl ? { sepoliaRpcUrl: options.sepoliaRpcUrl } : {}),
         ...(options.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {}),
+        ...(input.signal ? { signal: input.signal } : {}),
       };
 
       return runFetch(cache, declaredAddress, clientOptions, base);

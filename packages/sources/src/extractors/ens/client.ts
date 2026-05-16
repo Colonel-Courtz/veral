@@ -1,3 +1,4 @@
+import { mergeAbortSignals } from '@veral/shared';
 import { createPublicClient, http } from 'viem';
 import { mainnet } from 'viem/chains';
 
@@ -26,7 +27,10 @@ export type EnsFetchImpl = (input: string, init?: RequestInit) => Promise<Respon
 // Narrow RPC interface. Production wiring builds it from a viem
 // PublicClient; tests pass an in-memory stub.
 export interface EnsRpcClient {
-  resolverAddress(namehash: `0x${string}`): Promise<`0x${string}` | null>;
+  resolverAddress(
+    namehash: `0x${string}`,
+    options?: { signal?: AbortSignal },
+  ): Promise<`0x${string}` | null>;
 }
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000' as const;
@@ -47,7 +51,14 @@ function viemRpcClient(rpcUrl: string, timeoutMs: number): EnsRpcClient {
     transport: http(rpcUrl, { timeout: timeoutMs }),
   });
   return {
-    async resolverAddress(namehash) {
+    async resolverAddress(namehash, options) {
+      // viem 2.21's readContract action does not accept a per-call
+      // AbortSignal; the best we can do is short-circuit BEFORE the
+      // call when the upstream signal is already aborted. An in-flight
+      // viem call is not cancellable through this surface.
+      if (options?.signal?.aborted) {
+        throw new EnsFetchError('rpc_error', 'ens: aborted before resolver read');
+      }
       const result = (await client.readContract({
         address: ENS_REGISTRY_ADDRESS,
         abi: ENS_REGISTRY_RESOLVER_ABI,
@@ -148,6 +159,10 @@ export interface FetchEnsSubgraphOptions {
   readonly subgraphUrl?: string;
   readonly fetchImpl?: EnsFetchImpl;
   readonly timeoutMs?: number;
+  // Orchestrator-supplied cancellation. Merged with the per-request
+  // timeout AbortController so either deadline aborts the subgraph
+  // POST.
+  readonly signal?: AbortSignal;
 }
 
 async function postSubgraph(
@@ -155,15 +170,17 @@ async function postSubgraph(
   ensName: string,
   fetchImpl: EnsFetchImpl,
   timeoutMs: number,
+  externalSignal: AbortSignal | undefined,
 ): Promise<Response> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const signal = mergeAbortSignals(controller.signal, externalSignal);
   try {
     return await fetchImpl(url, {
       method: 'POST',
       headers: { accept: 'application/json', 'content-type': 'application/json' },
       body: JSON.stringify({ query: GRAPHQL_QUERY, variables: { name: ensName } }),
-      signal: controller.signal,
+      signal,
     });
   } catch (err) {
     throw new EnsFetchError(
@@ -229,7 +246,7 @@ export async function fetchEnsSubgraph(
   const url = options.subgraphUrl ?? DEFAULT_ENS_SUBGRAPH_URL;
   const fetchImpl: EnsFetchImpl = options.fetchImpl ?? globalThis.fetch.bind(globalThis);
   const timeoutMs = options.timeoutMs ?? DEFAULT_ENS_TIMEOUT_MS;
-  const response = await postSubgraph(url, ensName, fetchImpl, timeoutMs);
+  const response = await postSubgraph(url, ensName, fetchImpl, timeoutMs, options.signal);
   const obj = await readSubgraphJson(response);
   assertNoGraphqlErrors(obj);
   const domain = extractDomain(obj);

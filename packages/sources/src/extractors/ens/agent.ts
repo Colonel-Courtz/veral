@@ -98,13 +98,15 @@ async function loadSnapshot(
   namehash: `0x${string}`,
   rpc: EnsRpcClient,
   options: EnsAgentOptions,
+  signal: AbortSignal | undefined,
 ): Promise<FetchedSnapshot> {
-  const resolverAddress = await rpc.resolverAddress(namehash);
+  const resolverAddress = await rpc.resolverAddress(namehash, signal ? { signal } : undefined);
   try {
     const snap = await fetchEnsSubgraph(ensName, {
       ...(options.subgraphUrl !== undefined ? { subgraphUrl: options.subgraphUrl } : {}),
       ...(options.fetchImpl !== undefined ? { fetchImpl: options.fetchImpl } : {}),
       ...(options.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {}),
+      ...(signal ? { signal } : {}),
     });
     if (snap === null) {
       // Name not indexed — RPC-side resolver still meaningful.
@@ -175,10 +177,11 @@ async function runFetch(
   rpc: EnsRpcClient,
   options: EnsAgentOptions,
   base: RunBaseline,
+  signal: AbortSignal | undefined,
 ): Promise<AgentResult<EnsFindings>> {
   try {
     const snapshot = await cache<FetchedSnapshot>(cacheKey(ensName), CACHE_TTL.ENS_RECORDS, () =>
-      loadSnapshot(ensName, namehash, rpc, options),
+      loadSnapshot(ensName, namehash, rpc, options, signal),
     );
     const findings = buildFindings(ensName, namehash, snapshot);
     // 'ok' iff both RPC + subgraph returned data; otherwise 'partial'.
@@ -266,7 +269,7 @@ export function createEnsAgent(options: EnsAgentOptions = {}): SourceAgent<EnsFi
         );
       }
 
-      return runFetch(cache, ensName, namehash, rpc, options, base);
+      return runFetch(cache, ensName, namehash, rpc, options, base, input.signal);
     },
   };
 }

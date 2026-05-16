@@ -291,4 +291,48 @@ describe('createGithubAgent', () => {
     expect(result.findings?.repos).toHaveLength(2);
     expect(result.findings?.callBudget).toBe(14);
   });
+
+  it('a pre-aborted external signal short-circuits the first probe', async () => {
+    let fetchInvoked = 0;
+    const fetchImpl = routerFetch({
+      _default: () => {
+        fetchInvoked += 1;
+        return jsonResponse({});
+      },
+    });
+    const agent = createGithubAgent({
+      token: 'tok',
+      baseUrl: BASE,
+      fetchImpl,
+      cache: passThroughCache,
+    });
+    const controller = new AbortController();
+    controller.abort();
+    const result = await agent.run({ ...input(), signal: controller.signal });
+    expect(result.status).toBe('error');
+    expect(result.provenance.errorMessage).toMatch(/aborted/);
+    expect(fetchInvoked).toBe(0);
+  });
+
+  it('forwards a non-aborted external signal to the probe fetch', async () => {
+    let observedSignal: AbortSignal | undefined;
+    const fetchImpl: GithubFetchImpl = async (url, init) => {
+      observedSignal = init?.signal ?? undefined;
+      const parsed = new URL(url);
+      if (parsed.pathname === `/users/${OWNER}`) {
+        return jsonResponse(userBody(OWNER, 0));
+      }
+      return jsonResponse([]);
+    };
+    const agent = createGithubAgent({
+      token: 'tok',
+      baseUrl: BASE,
+      fetchImpl,
+      cache: passThroughCache,
+    });
+    const controller = new AbortController();
+    await agent.run({ ...input(), signal: controller.signal });
+    expect(observedSignal).toBeDefined();
+    expect(observedSignal?.aborted).toBe(false);
+  });
 });

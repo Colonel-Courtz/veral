@@ -10,6 +10,15 @@ export type SupportedChainId = typeof ETHEREUM_MAINNET_CHAIN_ID | typeof ETHEREU
 
 export type EthereumFetchErrorReason = 'missing_rpc_url' | 'unsupported_chain' | 'rpc_error';
 
+export class EthereumAbortedError extends Error {
+  readonly chainId: number;
+  constructor(chainId: number, where: string) {
+    super(`ethereum: aborted before ${where} on chain ${chainId}`);
+    this.name = 'EthereumAbortedError';
+    this.chainId = chainId;
+  }
+}
+
 export class EthereumFetchError extends Error {
   readonly reason: EthereumFetchErrorReason;
   readonly chainId: number;
@@ -25,9 +34,16 @@ export class EthereumFetchError extends Error {
 // actually calls. Tests pass an in-memory stub matching this interface;
 // production code passes a real PublicClient (which satisfies it).
 export interface EthereumRpcClient {
-  getBlockNumber(): Promise<bigint>;
-  getTransactionCount(args: { address: `0x${string}`; blockNumber: bigint }): Promise<number>;
-  getBlock(args: { blockNumber: bigint }): Promise<{ readonly timestamp: bigint }>;
+  getBlockNumber(args?: { signal?: AbortSignal }): Promise<bigint>;
+  getTransactionCount(args: {
+    address: `0x${string}`;
+    blockNumber: bigint;
+    signal?: AbortSignal;
+  }): Promise<number>;
+  getBlock(args: {
+    blockNumber: bigint;
+    signal?: AbortSignal;
+  }): Promise<{ readonly timestamp: bigint }>;
 }
 
 export interface EthereumClientOptions {
@@ -38,6 +54,11 @@ export interface EthereumClientOptions {
   readonly mainnetRpcUrl?: string;
   readonly sepoliaRpcUrl?: string;
   readonly timeoutMs?: number;
+  // Orchestrator-supplied cancellation. viem actions do not currently
+  // accept a per-call AbortSignal, so we check `aborted` between the
+  // sequential RPC calls (head probe, nonce probe, binary-search
+  // iterations) and refuse to fire new requests once cancelled.
+  readonly signal?: AbortSignal;
 }
 
 function resolveRpcUrl(chainId: SupportedChainId, options: EthereumClientOptions): string {
@@ -83,12 +104,19 @@ async function findFirstTxBlock(
   client: EthereumRpcClient,
   address: `0x${string}`,
   latestBlock: bigint,
+  signal: AbortSignal | undefined,
+  chainId: number,
 ): Promise<bigint> {
   let lo = 0n;
   let hi = latestBlock;
   while (lo < hi) {
+    if (signal?.aborted) throw new EthereumAbortedError(chainId, 'binary-search iteration');
     const mid = (lo + hi) / 2n;
-    const n = await client.getTransactionCount({ address, blockNumber: mid });
+    const n = await client.getTransactionCount({
+      address,
+      blockNumber: mid,
+      ...(signal ? { signal } : {}),
+    });
     if (n === 0) {
       lo = mid + 1n;
     } else {
@@ -120,11 +148,17 @@ export async function fetchEthereumActivity(
   const client = buildClient(chainId, options);
   const lowerAddress = address.toLowerCase() as `0x${string}`;
 
+  if (options.signal?.aborted) throw new EthereumAbortedError(chainId, 'head probe');
   let latestBlock: bigint;
   let nonce: number;
   try {
-    latestBlock = await client.getBlockNumber();
-    nonce = await client.getTransactionCount({ address: lowerAddress, blockNumber: latestBlock });
+    latestBlock = await client.getBlockNumber(options.signal ? { signal: options.signal } : {});
+    if (options.signal?.aborted) throw new EthereumAbortedError(chainId, 'nonce probe');
+    nonce = await client.getTransactionCount({
+      address: lowerAddress,
+      blockNumber: latestBlock,
+      ...(options.signal ? { signal: options.signal } : {}),
+    });
   } catch (err) {
     throw new EthereumFetchError(
       'rpc_error',
@@ -137,9 +171,18 @@ export async function fetchEthereumActivity(
   let firstTxTimestamp: number | null = null;
   if (nonce > 0) {
     try {
-      const block = await findFirstTxBlock(client, lowerAddress, latestBlock);
+      const block = await findFirstTxBlock(
+        client,
+        lowerAddress,
+        latestBlock,
+        options.signal,
+        chainId,
+      );
       firstTxBlock = toSafeNumber(block);
-      const blockData = await client.getBlock({ blockNumber: block });
+      const blockData = await client.getBlock({
+        blockNumber: block,
+        ...(options.signal ? { signal: options.signal } : {}),
+      });
       firstTxTimestamp = toSafeNumber(blockData.timestamp);
     } catch (err) {
       // Partial degrade — head probe succeeded so we keep nonce + latestBlock.

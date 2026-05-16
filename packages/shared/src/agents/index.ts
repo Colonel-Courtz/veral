@@ -25,6 +25,11 @@ export type BackendDescriptor =
 export interface AgentInput {
   readonly subject: SubjectManifest;
   readonly runUuid: string;
+  // Orchestrator-supplied cancellation. The agent SHOULD pass this
+  // through to every fetch / RPC so that a timeout on the
+  // orchestrator side cancels in-flight network work instead of
+  // letting it run to socket-level timeout.
+  readonly signal?: AbortSignal;
 }
 
 export interface AgentProvenance {

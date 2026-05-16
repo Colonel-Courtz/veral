@@ -86,6 +86,7 @@ function clientOptionsFor(
   token: string,
   base: RunBaseline,
   options: GithubAgentOptions,
+  signal: AbortSignal | undefined,
 ): { readonly owner: string; readonly client: GithubClientOptions } {
   const client: GithubClientOptions = {
     token,
@@ -96,6 +97,7 @@ function clientOptionsFor(
     ...(options.readmeBytesThreshold !== undefined
       ? { readmeBytesThreshold: options.readmeBytesThreshold }
       : {}),
+    ...(signal ? { signal } : {}),
   };
   return { owner, client };
 }
@@ -183,7 +185,7 @@ export function createGithubAgent(options: GithubAgentOptions = {}): SourceAgent
           }),
         );
       }
-      const { client } = clientOptionsFor(declared.owner, token, base, options);
+      const { client } = clientOptionsFor(declared.owner, token, base, options, input.signal);
       return runFetch(cache, declared.owner, client, base);
     },
   };

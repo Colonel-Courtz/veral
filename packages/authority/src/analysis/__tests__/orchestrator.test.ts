@@ -176,6 +176,70 @@ describe('orchestrate', () => {
     expect(fast?.provenance.backend.kind).toBe('rest-api');
   });
 
+  it('aborts the agent signal on timeout so in-flight work cancels', async () => {
+    const signalSeen: AbortSignal[] = [];
+    const observerAgent: SourceAgent<unknown> = {
+      id: 'observer',
+      version: '1.0.0',
+      domain: 'test',
+      tierApplicability: ['Public', 'Anchored', 'Sealed'],
+      schema: z.unknown() as z.ZodSchema<unknown>,
+      async run(agentInput) {
+        if (agentInput.signal) signalSeen.push(agentInput.signal);
+        // Hang until the signal aborts; mirrors a real fetch under
+        // abort. The orchestrator races the timeout against this
+        // promise and wins.
+        await new Promise<void>((resolve) => {
+          if (agentInput.signal?.aborted) {
+            resolve();
+            return;
+          }
+          agentInput.signal?.addEventListener('abort', () => resolve(), { once: true });
+        });
+        throw new DOMException('aborted', 'AbortError');
+      },
+    };
+    const registry = registryWith([observerAgent]);
+    await orchestrate(baseInput({ registry, timeoutMs: 30 }));
+    expect(signalSeen).toHaveLength(1);
+    expect(signalSeen[0]?.aborted).toBe(true);
+  });
+
+  it('passes a non-aborted signal to a healthy agent', async () => {
+    let signalPresent = false;
+    let signalAbortedDuringRun: boolean | undefined;
+    const okAgent: SourceAgent<unknown> = {
+      id: 'ok',
+      version: '1.0.0',
+      domain: 'test',
+      tierApplicability: ['Public', 'Anchored', 'Sealed'],
+      schema: z.unknown() as z.ZodSchema<unknown>,
+      async run(agentInput) {
+        signalPresent = agentInput.signal !== undefined;
+        signalAbortedDuringRun = agentInput.signal?.aborted;
+        return {
+          agentId: 'ok',
+          agentVersion: '1.0.0',
+          runUuid: agentInput.runUuid,
+          runStartedAt: 0,
+          runFinishedAt: 1,
+          status: 'ok',
+          findings: null,
+          provenance: {
+            backend: { kind: 'rest-api', baseUrl: 'http://test', version: '1' },
+            inputHash: '0x',
+          },
+        };
+      },
+    };
+    const registry = registryWith([okAgent]);
+    await orchestrate(baseInput({ registry }));
+    expect(signalPresent).toBe(true);
+    // Snapshot taken INSIDE run() — the orchestrator's defensive
+    // post-run abort fires later in its finally block.
+    expect(signalAbortedDuringRun).toBe(false);
+  });
+
   it('falls back to the default timeout when none supplied', async () => {
     expect(DEFAULT_AGENT_TIMEOUT_MS).toBe(30_000);
     const registry = registryWith([stubAgent({ id: 'a' })]);

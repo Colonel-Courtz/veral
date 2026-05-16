@@ -43,7 +43,7 @@ export function createSourcifyAgent(
   const baseUrl = resolveBaseUrl(options.baseUrl);
   const now = options.now ?? nowSeconds;
   const cache: CacheFn = options.cache ?? getOrFetch;
-  const fetchOptions = {
+  const baseFetchOptions = {
     baseUrl,
     ...(options.fetchImpl ? { fetchImpl: options.fetchImpl } : {}),
     ...(options.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {}),
@@ -77,7 +77,11 @@ export function createSourcifyAgent(
           const finding = await cache<SourcifyContractFinding>(
             cacheKey(entry.chainId, entry.address),
             CACHE_TTL.SOURCIFY,
-            () => fetchSourcifyContract(entry.chainId, entry.address, fetchOptions),
+            () =>
+              fetchSourcifyContract(entry.chainId, entry.address, {
+                ...baseFetchOptions,
+                ...(input.signal ? { signal: input.signal } : {}),
+              }),
           );
           contracts.push(finding);
         }
