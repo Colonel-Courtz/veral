@@ -145,10 +145,11 @@ describe('orchestrate', () => {
     expect(bad?.findings).toBeNull();
     expect(bad?.provenance.errorMessage).toBe('boom');
     expect(bad?.provenance.backend).toEqual({
-      kind: 'cli',
-      tool: 'veral-orchestrator:bad',
-      version: '1',
+      kind: 'orchestrator-error',
+      agentId: 'bad',
+      cause: 'throw',
     });
+    expect(bad?.provenance.backend.kind).toBe('orchestrator-error');
   });
 
   it('times out a slow agent without blocking faster siblings', async () => {
@@ -162,8 +163,17 @@ describe('orchestrate', () => {
     const slow = out.agentResults.find((r) => r.agentId === 'slow');
     expect(slow?.status).toBe('error');
     expect(slow?.provenance.errorMessage).toMatch(/timed out after 30ms/);
+    expect(slow?.provenance.backend).toEqual({
+      kind: 'orchestrator-error',
+      agentId: 'slow',
+      cause: 'timeout',
+    });
+    expect(slow?.provenance.backend.kind).toBe('orchestrator-error');
     const fast = out.agentResults.find((r) => r.agentId === 'fast');
     expect(fast?.status).toBe('ok');
+    // Happy-path agents keep their own backend descriptor — the
+    // orchestrator-error variant is reserved for failure paths.
+    expect(fast?.provenance.backend.kind).toBe('rest-api');
   });
 
   it('falls back to the default timeout when none supplied', async () => {

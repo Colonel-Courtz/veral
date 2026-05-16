@@ -36,16 +36,26 @@ export interface OrchestrateOutput {
   readonly finishedAt: number;
 }
 
+// Sentinel error class so the catch branch can distinguish a timeout
+// (orchestrator-side deadline) from an agent throw (agent-side failure)
+// without relying on a message-substring match.
+class AgentTimeoutError extends Error {
+  readonly agentId: string;
+  readonly timeoutMs: number;
+  constructor(agentId: string, timeoutMs: number) {
+    super(`agent "${agentId}" timed out after ${timeoutMs}ms`);
+    this.name = 'AgentTimeoutError';
+    this.agentId = agentId;
+    this.timeoutMs = timeoutMs;
+  }
+}
+
 function nowSecondsDefault(): number {
   return Math.floor(Date.now() / 1000);
 }
 
-// We do not have access to the agent's own backend descriptor when the
-// agent throws or times out before returning, so we surface the
-// orchestrator as the backend with a per-agent tool label. The
-// errorMessage on the provenance is the load-bearing field.
-function orchestratorBackend(agentId: string): BackendDescriptor {
-  return { kind: 'cli', tool: `veral-orchestrator:${agentId}`, version: '1' };
+function orchestratorBackend(agentId: string, cause: 'throw' | 'timeout'): BackendDescriptor {
+  return { kind: 'orchestrator-error', agentId, cause };
 }
 
 function buildErrorResult(
@@ -54,6 +64,7 @@ function buildErrorResult(
   runStartedAt: number,
   runFinishedAt: number,
   errorMessage: string,
+  cause: 'throw' | 'timeout',
 ): AgentResult<unknown> {
   return {
     agentId: agent.id,
@@ -64,7 +75,7 @@ function buildErrorResult(
     status: 'error',
     findings: null,
     provenance: buildProvenance({
-      backend: orchestratorBackend(agent.id),
+      backend: orchestratorBackend(agent.id, cause),
       input: { subject: input.subject, runUuid: input.runUuid },
       errorMessage,
     }),
@@ -80,17 +91,15 @@ async function runWithTimeout(
   const runStartedAt = now();
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeoutPromise = new Promise<never>((_, reject) => {
-    timer = setTimeout(
-      () => reject(new Error(`agent "${agent.id}" timed out after ${timeoutMs}ms`)),
-      timeoutMs,
-    );
+    timer = setTimeout(() => reject(new AgentTimeoutError(agent.id, timeoutMs)), timeoutMs);
   });
 
   try {
     return await Promise.race([agent.run(input), timeoutPromise]);
   } catch (err) {
+    const cause: 'throw' | 'timeout' = err instanceof AgentTimeoutError ? 'timeout' : 'throw';
     const errorMessage = err instanceof Error ? err.message : String(err);
-    return buildErrorResult(agent, input, runStartedAt, now(), errorMessage);
+    return buildErrorResult(agent, input, runStartedAt, now(), errorMessage, cause);
   } finally {
     if (timer !== undefined) clearTimeout(timer);
   }
