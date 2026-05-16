@@ -33,18 +33,6 @@ export const AXIS_WEIGHTS = {
   relevance: 0.5,
 } as const;
 
-export const TIER_THRESHOLDS = {
-  S: 65,
-  A: 50,
-  B: 35,
-  C: 20,
-  D: 0,
-} as const;
-
-export const PUBLIC_READ_TIER_CAP: 'A' = 'A';
-
-export const U_TIER_MIN_NONZERO_SOURCES = 2;
-
 export function trustFactor(label: TrustLabel): number {
   return label === 'verified' ? TRUST_DISCOUNT_VERIFIED : TRUST_DISCOUNT_UNVERIFIED;
 }

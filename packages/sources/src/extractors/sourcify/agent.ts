@@ -122,9 +122,3 @@ export function createSourcifyAgent(
     },
   };
 }
-
-export const sourcifyAgentMeta = {
-  id: AGENT_ID,
-  version: AGENT_VERSION,
-  domain: AGENT_DOMAIN,
-} as const;

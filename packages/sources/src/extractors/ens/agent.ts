@@ -273,9 +273,3 @@ export function createEnsAgent(options: EnsAgentOptions = {}): SourceAgent<EnsFi
     },
   };
 }
-
-export const ensAgentMeta = {
-  id: AGENT_ID,
-  version: AGENT_VERSION,
-  domain: AGENT_DOMAIN,
-} as const;

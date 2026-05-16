@@ -15,6 +15,7 @@ export type GithubFetchErrorReason =
   | 'network_error'
   | 'malformed_response'
   | 'rate_limited'
+  | 'unauthorized'
   | 'not_found'
   | 'server_error';
 
@@ -70,11 +71,45 @@ function buildContext(options: GithubClientOptions): ClientContext {
   };
 }
 
-function classifyHttpError(status: number, url: string): GithubFetchError {
-  if (status === 403 || status === 429) {
+// GitHub overloads 403 for both quota exhaustion and authentication
+// failure (revoked token, missing scope). Operators need to know which
+// happened: rate-limit clears on its own, auth needs a new token. The
+// official rate-limit signal is X-RateLimit-Remaining: 0; auth failures
+// surface in the JSON body's `message` field as "Bad credentials" or
+// "Resource not accessible by integration".
+async function classifyHttpError(response: Response, url: string): Promise<GithubFetchError> {
+  const status = response.status;
+  if (status === 429) {
     return new GithubFetchError(
       'rate_limited',
       `github: rate limited (HTTP ${status}) for ${url}`,
+      status,
+    );
+  }
+  if (status === 403) {
+    if (response.headers.get('x-ratelimit-remaining') === '0') {
+      return new GithubFetchError(
+        'rate_limited',
+        `github: rate limited (HTTP 403, remaining=0) for ${url}`,
+        status,
+      );
+    }
+    let body = '';
+    try {
+      body = await response.text();
+    } catch {
+      // Body unreadable — fall through to conservative rate_limited default.
+    }
+    if (/bad credentials|resource not accessible/i.test(body)) {
+      return new GithubFetchError(
+        'unauthorized',
+        `github: unauthorized (HTTP 403) for ${url}`,
+        status,
+      );
+    }
+    return new GithubFetchError(
+      'rate_limited',
+      `github: rate limited (HTTP 403) for ${url}`,
       status,
     );
   }
@@ -123,8 +158,7 @@ async function probe<T>(
   }
 
   if (response.status === 404) return { kind: 'absent' };
-  if (response.status < 200 || response.status >= 300)
-    throw classifyHttpError(response.status, url);
+  if (response.status < 200 || response.status >= 300) throw await classifyHttpError(response, url);
 
   let body: unknown;
   try {
@@ -174,30 +208,6 @@ interface RawRepo {
   readonly stars: number;
 }
 
-function parseRepoListItem(raw: unknown): RawRepo | null {
-  const obj = asObject(raw);
-  if (obj === null) return null;
-  const name = asString(obj.name);
-  const fullName = asString(obj.full_name);
-  if (name === null || fullName === null) return null;
-  return {
-    name,
-    fullName,
-    pushedAt: asString(obj.pushed_at),
-    stars: asInteger(obj.stargazers_count) ?? 0,
-  };
-}
-
-function parseRepoList(raw: unknown): ReadonlyArray<RawRepo> | null {
-  if (!Array.isArray(raw)) return null;
-  const out: RawRepo[] = [];
-  for (const item of raw) {
-    const parsed = parseRepoListItem(item);
-    if (parsed !== null) out.push(parsed);
-  }
-  return out;
-}
-
 // Returns dir (array body) or file (object with type: 'file' + size) or null.
 function parseContents(
   raw: unknown,
@@ -217,21 +227,114 @@ async function fetchUser(ctx: ClientContext, owner: string): Promise<GithubUser 
   return result.kind === 'ok' ? result.value : null;
 }
 
-async function fetchTopRepos(
+// GitHub's REST /users/{owner}/repos endpoint does not accept sort=stars
+// — only updated|created|pushed|full_name. A client-side re-sort after
+// sort=updated only re-orders the recently-touched window, biasing the
+// agent toward active maintenance over historical popularity. GraphQL's
+// repositories(orderBy: STARGAZERS DESC) is the only path that returns
+// true top-N-by-stars in a single call.
+const REPO_DISCOVERY_QUERY = `query VeralRepoDiscovery($login: String!, $first: Int!) {
+  user(login: $login) {
+    repositories(first: $first, orderBy: {field: STARGAZERS, direction: DESC}, isFork: false, ownerAffiliations: OWNER) {
+      nodes {
+        name
+        nameWithOwner
+        stargazerCount
+        pushedAt
+      }
+    }
+  }
+}`;
+
+function parseGraphqlRepoNode(raw: unknown): RawRepo | null {
+  const obj = asObject(raw);
+  if (obj === null) return null;
+  const name = asString(obj.name);
+  const fullName = asString(obj.nameWithOwner);
+  if (name === null || fullName === null) return null;
+  return {
+    name,
+    fullName,
+    pushedAt: asString(obj.pushedAt),
+    stars: asInteger(obj.stargazerCount) ?? 0,
+  };
+}
+
+function parseGraphqlReposResponse(raw: unknown): ReadonlyArray<RawRepo> {
+  const obj = asObject(raw);
+  if (obj === null) {
+    throw new GithubFetchError('malformed_response', 'github graphql: non-object response');
+  }
+  const errors = obj.errors;
+  if (Array.isArray(errors) && errors.length > 0) {
+    const first = asObject(errors[0]);
+    const msg = (first && asString(first.message)) ?? 'unknown error';
+    throw new GithubFetchError('malformed_response', `github graphql: ${msg}`);
+  }
+  const data = asObject(obj.data);
+  if (data === null) return [];
+  // data.user is null when the login is unknown — caller already maps
+  // that to status='partial' via the separate REST user fetch, so we
+  // return an empty repo list rather than throwing.
+  const userObj = asObject(data.user);
+  if (userObj === null) return [];
+  const repositories = asObject(userObj.repositories);
+  if (repositories === null) return [];
+  const nodes = repositories.nodes;
+  if (!Array.isArray(nodes)) return [];
+  const out: RawRepo[] = [];
+  for (const node of nodes) {
+    const parsed = parseGraphqlRepoNode(node);
+    if (parsed !== null) out.push(parsed);
+  }
+  return out;
+}
+
+async function fetchTopReposViaGraphQL(
   ctx: ClientContext,
   owner: string,
   cap: number,
 ): Promise<ReadonlyArray<RawRepo>> {
-  // GitHub's /users/{owner}/repos accepts sort=updated|created|pushed|full_name;
-  // it does NOT support sort=stars. We page once at the cap and sort
-  // client-side by stargazers — for the P0 budget we accept the implicit
-  // "first page of updated repos" pre-filter; v2 can widen pages if the
-  // budget is raised.
-  const url = `${ctx.baseUrl}/users/${encodeURIComponent(owner)}/repos?per_page=${cap}&sort=updated`;
-  const result = await probe(ctx, url, parseRepoList);
-  if (result.kind !== 'ok') return [];
-  const sorted = [...result.value].sort((a, b) => b.stars - a.stars);
-  return sorted.slice(0, cap);
+  ctx.callBudget.count += 1;
+  const url = `${ctx.baseUrl}/graphql`;
+  if (ctx.externalSignal?.aborted) {
+    throw new GithubFetchError('network_error', `github: aborted before request to ${url}`);
+  }
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ctx.timeoutMs);
+  const signal = mergeAbortSignals(controller.signal, ctx.externalSignal);
+  let response: Response;
+  try {
+    response = await ctx.fetchImpl(url, {
+      method: 'POST',
+      headers: { ...ctx.headers, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        query: REPO_DISCOVERY_QUERY,
+        variables: { login: owner, first: cap },
+      }),
+      signal,
+    });
+  } catch (err) {
+    throw new GithubFetchError(
+      'network_error',
+      `github: network error for ${url} — ${err instanceof Error ? err.message : String(err)}`,
+    );
+  } finally {
+    clearTimeout(timer);
+  }
+  if (response.status < 200 || response.status >= 300) {
+    throw await classifyHttpError(response, url);
+  }
+  let body: unknown;
+  try {
+    body = await response.json();
+  } catch (err) {
+    throw new GithubFetchError(
+      'malformed_response',
+      `github graphql: invalid JSON — ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+  return parseGraphqlReposResponse(body);
 }
 
 async function probeTestDir(ctx: ClientContext, fullName: string): Promise<boolean> {
@@ -272,16 +375,124 @@ async function probeLicense(ctx: ClientContext, fullName: string): Promise<boole
   return result.kind === 'ok';
 }
 
+function parseWorkflowRuns(
+  raw: unknown,
+): { readonly successful: number; readonly total: number } | null {
+  const obj = asObject(raw);
+  if (obj === null) return null;
+  const runs = obj.workflow_runs;
+  if (!Array.isArray(runs)) return null;
+  let successful = 0;
+  for (const run of runs) {
+    const runObj = asObject(run);
+    if (runObj !== null && runObj.conclusion === 'success') successful += 1;
+  }
+  const reportedTotal = asInteger(obj.total_count);
+  // total_count is GitHub's authoritative count (may exceed per_page
+  // when more runs exist than fit in the page). When absent, fall back
+  // to the array length so the ratio remains correct for the sampled
+  // window.
+  const total = reportedTotal ?? runs.length;
+  return { successful, total };
+}
+
+// P1 enrichment endpoints are best-effort: a 404 typically means the
+// feature is disabled for the repo (Actions, Issues), and any other
+// failure is preferable to aborting the whole enrichment. Each helper
+// returns null on absent / error and leaves callBudget incremented by
+// the underlying probe.
+async function probeCiRuns(
+  ctx: ClientContext,
+  fullName: string,
+): Promise<{ readonly successful: number; readonly total: number } | null> {
+  const result = await probe(
+    ctx,
+    `${ctx.baseUrl}/repos/${fullName}/actions/runs?per_page=100&status=completed`,
+    parseWorkflowRuns,
+  ).catch(() => ({ kind: 'absent' as const }));
+  return result.kind === 'ok' ? result.value : null;
+}
+
+function parseIssueArrayLength(raw: unknown): number | null {
+  if (!Array.isArray(raw)) return null;
+  return raw.length;
+}
+
+async function probeBugIssues(
+  ctx: ClientContext,
+  fullName: string,
+): Promise<{ readonly closed: number; readonly total: number } | null> {
+  const [closed, all] = await Promise.all([
+    probe(
+      ctx,
+      `${ctx.baseUrl}/repos/${fullName}/issues?state=closed&labels=bug&per_page=100`,
+      parseIssueArrayLength,
+    ).catch(() => ({ kind: 'absent' as const })),
+    probe(
+      ctx,
+      `${ctx.baseUrl}/repos/${fullName}/issues?state=all&labels=bug&per_page=100`,
+      parseIssueArrayLength,
+    ).catch(() => ({ kind: 'absent' as const })),
+  ]);
+  if (closed.kind !== 'ok' || all.kind !== 'ok') return null;
+  return { closed: closed.value, total: all.value };
+}
+
+// 12 * 30 * 86400 seconds matches the issue spec verbatim; using a
+// fixed 360-day window keeps the result deterministic regardless of
+// month length and avoids importing a date library.
+const RELEASE_WINDOW_SECONDS = 12 * 30 * 86_400;
+
+function publishedAtSecondsInWindow(item: unknown, cutoffSeconds: number): boolean {
+  const obj = asObject(item);
+  if (obj === null) return false;
+  const publishedAt = asString(obj.published_at);
+  if (publishedAt === null) return false;
+  const ts = Date.parse(publishedAt);
+  if (!Number.isFinite(ts)) return false;
+  return ts / 1000 >= cutoffSeconds;
+}
+
+function makeReleaseCounter(nowSeconds: number) {
+  return (raw: unknown): number | null => {
+    if (!Array.isArray(raw)) return null;
+    const cutoff = nowSeconds - RELEASE_WINDOW_SECONDS;
+    let count = 0;
+    for (const item of raw) {
+      if (publishedAtSecondsInWindow(item, cutoff)) count += 1;
+    }
+    return count;
+  };
+}
+
+async function probeReleases(
+  ctx: ClientContext,
+  fullName: string,
+  nowSeconds: number,
+): Promise<number | null> {
+  const result = await probe(
+    ctx,
+    `${ctx.baseUrl}/repos/${fullName}/releases?per_page=100`,
+    makeReleaseCounter(nowSeconds),
+  ).catch(() => ({ kind: 'absent' as const }));
+  return result.kind === 'ok' ? result.value : null;
+}
+
 async function enrichRepo(
   ctx: ClientContext,
   raw: RawRepo,
   thresholdBytes: number,
+  nowSeconds: number,
 ): Promise<GithubRepo> {
-  const [hasTestDir, hasSubstantialReadme, hasLicense] = await Promise.all([
-    probeTestDir(ctx, raw.fullName),
-    probeReadme(ctx, raw.fullName, thresholdBytes),
-    probeLicense(ctx, raw.fullName),
-  ]);
+  const [hasTestDir, hasSubstantialReadme, hasLicense, ciRuns, bugIssues, releasesLast12m] =
+    await Promise.all([
+      probeTestDir(ctx, raw.fullName),
+      probeReadme(ctx, raw.fullName, thresholdBytes),
+      probeLicense(ctx, raw.fullName),
+      probeCiRuns(ctx, raw.fullName),
+      probeBugIssues(ctx, raw.fullName),
+      probeReleases(ctx, raw.fullName, nowSeconds),
+    ]);
   return {
     name: raw.name,
     fullName: raw.fullName,
@@ -290,6 +501,9 @@ async function enrichRepo(
     hasTestDir,
     hasSubstantialReadme,
     hasLicense,
+    ciRuns,
+    bugIssues,
+    releasesLast12m,
   };
 }
 
@@ -300,10 +514,12 @@ export interface GithubFetchResult {
 }
 
 // Call budget per subject:
-//   1 (user) + 1 (top-repo list) + 20 repos × (4 test probes + 1 README + 1 LICENSE) = 122.
-// Documented so future increases (adding endpoints) stay below GitHub's
-// 5000/h authed-rate-limit ceiling assuming ~40 subjects per hour per
-// token. P1 endpoints (issues/releases/actions) are tracked separately.
+//   1 (user) + 1 (graphql top-repo list)
+//   + 20 repos × (4 test probes + 1 README + 1 LICENSE + 1 CI + 2 bug issue + 1 releases) = 202.
+// P1 endpoints (CI / Issues / Releases) add ~4 calls per repo. Still
+// well below GitHub's 5000/h authed-rate-limit assuming ~25 subjects
+// per hour per token. Per-endpoint failures degrade to null without
+// aborting the whole enrichment.
 export async function fetchGithubP0(
   owner: string,
   options: GithubClientOptions,
@@ -319,11 +535,14 @@ export async function fetchGithubP0(
   if (ctx.externalSignal?.aborted) {
     throw new GithubFetchError('network_error', 'github: aborted after user fetch');
   }
-  const rawRepos = await fetchTopRepos(ctx, owner, cap);
+  const rawRepos = await fetchTopReposViaGraphQL(ctx, owner, cap);
   if (ctx.externalSignal?.aborted) {
     throw new GithubFetchError('network_error', 'github: aborted after repo list fetch');
   }
-  const repos = await Promise.all(rawRepos.map((raw) => enrichRepo(ctx, raw, thresholdBytes)));
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  const repos = await Promise.all(
+    rawRepos.map((raw) => enrichRepo(ctx, raw, thresholdBytes, nowSeconds)),
+  );
 
   return { user, repos, callBudget: ctx.callBudget.count };
 }

@@ -19,6 +19,7 @@ const AGENT_DOMAIN_BY_ID: Readonly<Record<string, string>> = {
   'github-extract': 'github',
   'ethereum-extract': 'ethereum',
   'ens-extract': 'ens-internal',
+  'eas-extract': 'eas',
 };
 
 function domainForAgentId(agentId: string): string {

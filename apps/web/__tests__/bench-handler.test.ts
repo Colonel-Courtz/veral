@@ -346,7 +346,28 @@ describe('AGENT_DOMAIN_BY_ID lookup', () => {
     });
   });
 
-  it('rollup mirrors registry insertion order across all four agents', async () => {
+  it('maps eas-extract to eas in the rollup', async () => {
+    const result = await computeBenchScore('alice.eth', {
+      resolveSubject: async () => fakeSubject(),
+      orchestrate: async () => ({
+        runUuid: RUN_UUID,
+        tier: 'Public' as const,
+        agentResults: [bareResult('eas-extract', 'ok')],
+        agentsTotal: 1,
+        agentsSucceeded: 1,
+        startedAt: NOW,
+        finishedAt: NOW,
+      }),
+      now: () => NOW,
+    });
+    expect(result.agentRollup[0]).toEqual({
+      agentId: 'eas-extract',
+      domain: 'eas',
+      status: 'ok',
+    });
+  });
+
+  it('rollup mirrors registry insertion order across all five agents', async () => {
     const result = await computeBenchScore('alice.eth', {
       resolveSubject: async () => fakeSubject(),
       orchestrate: async () => ({
@@ -357,9 +378,10 @@ describe('AGENT_DOMAIN_BY_ID lookup', () => {
           bareResult(GITHUB_AGENT_ID, 'ok'),
           bareResult(ETHEREUM_AGENT_ID, 'ok'),
           bareResult(ENS_AGENT_ID, 'ok'),
+          bareResult('eas-extract', 'ok'),
         ],
-        agentsTotal: 4,
-        agentsSucceeded: 4,
+        agentsTotal: 5,
+        agentsSucceeded: 5,
         startedAt: NOW,
         finishedAt: NOW,
       }),
@@ -370,6 +392,7 @@ describe('AGENT_DOMAIN_BY_ID lookup', () => {
       'github',
       'ethereum',
       'ens-internal',
+      'eas',
     ]);
   });
 });
