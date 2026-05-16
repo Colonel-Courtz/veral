@@ -208,30 +208,6 @@ interface RawRepo {
   readonly stars: number;
 }
 
-function parseRepoListItem(raw: unknown): RawRepo | null {
-  const obj = asObject(raw);
-  if (obj === null) return null;
-  const name = asString(obj.name);
-  const fullName = asString(obj.full_name);
-  if (name === null || fullName === null) return null;
-  return {
-    name,
-    fullName,
-    pushedAt: asString(obj.pushed_at),
-    stars: asInteger(obj.stargazers_count) ?? 0,
-  };
-}
-
-function parseRepoList(raw: unknown): ReadonlyArray<RawRepo> | null {
-  if (!Array.isArray(raw)) return null;
-  const out: RawRepo[] = [];
-  for (const item of raw) {
-    const parsed = parseRepoListItem(item);
-    if (parsed !== null) out.push(parsed);
-  }
-  return out;
-}
-
 // Returns dir (array body) or file (object with type: 'file' + size) or null.
 function parseContents(
   raw: unknown,
@@ -251,21 +227,114 @@ async function fetchUser(ctx: ClientContext, owner: string): Promise<GithubUser 
   return result.kind === 'ok' ? result.value : null;
 }
 
-async function fetchTopRepos(
+// GitHub's REST /users/{owner}/repos endpoint does not accept sort=stars
+// — only updated|created|pushed|full_name. A client-side re-sort after
+// sort=updated only re-orders the recently-touched window, biasing the
+// agent toward active maintenance over historical popularity. GraphQL's
+// repositories(orderBy: STARGAZERS DESC) is the only path that returns
+// true top-N-by-stars in a single call.
+const REPO_DISCOVERY_QUERY = `query VeralRepoDiscovery($login: String!, $first: Int!) {
+  user(login: $login) {
+    repositories(first: $first, orderBy: {field: STARGAZERS, direction: DESC}, isFork: false, ownerAffiliations: OWNER) {
+      nodes {
+        name
+        nameWithOwner
+        stargazerCount
+        pushedAt
+      }
+    }
+  }
+}`;
+
+function parseGraphqlRepoNode(raw: unknown): RawRepo | null {
+  const obj = asObject(raw);
+  if (obj === null) return null;
+  const name = asString(obj.name);
+  const fullName = asString(obj.nameWithOwner);
+  if (name === null || fullName === null) return null;
+  return {
+    name,
+    fullName,
+    pushedAt: asString(obj.pushedAt),
+    stars: asInteger(obj.stargazerCount) ?? 0,
+  };
+}
+
+function parseGraphqlReposResponse(raw: unknown): ReadonlyArray<RawRepo> {
+  const obj = asObject(raw);
+  if (obj === null) {
+    throw new GithubFetchError('malformed_response', 'github graphql: non-object response');
+  }
+  const errors = obj.errors;
+  if (Array.isArray(errors) && errors.length > 0) {
+    const first = asObject(errors[0]);
+    const msg = (first && asString(first.message)) ?? 'unknown error';
+    throw new GithubFetchError('malformed_response', `github graphql: ${msg}`);
+  }
+  const data = asObject(obj.data);
+  if (data === null) return [];
+  // data.user is null when the login is unknown — caller already maps
+  // that to status='partial' via the separate REST user fetch, so we
+  // return an empty repo list rather than throwing.
+  const userObj = asObject(data.user);
+  if (userObj === null) return [];
+  const repositories = asObject(userObj.repositories);
+  if (repositories === null) return [];
+  const nodes = repositories.nodes;
+  if (!Array.isArray(nodes)) return [];
+  const out: RawRepo[] = [];
+  for (const node of nodes) {
+    const parsed = parseGraphqlRepoNode(node);
+    if (parsed !== null) out.push(parsed);
+  }
+  return out;
+}
+
+async function fetchTopReposViaGraphQL(
   ctx: ClientContext,
   owner: string,
   cap: number,
 ): Promise<ReadonlyArray<RawRepo>> {
-  // GitHub's /users/{owner}/repos accepts sort=updated|created|pushed|full_name;
-  // it does NOT support sort=stars. We page once at the cap and sort
-  // client-side by stargazers — for the P0 budget we accept the implicit
-  // "first page of updated repos" pre-filter; v2 can widen pages if the
-  // budget is raised.
-  const url = `${ctx.baseUrl}/users/${encodeURIComponent(owner)}/repos?per_page=${cap}&sort=updated`;
-  const result = await probe(ctx, url, parseRepoList);
-  if (result.kind !== 'ok') return [];
-  const sorted = [...result.value].sort((a, b) => b.stars - a.stars);
-  return sorted.slice(0, cap);
+  ctx.callBudget.count += 1;
+  const url = `${ctx.baseUrl}/graphql`;
+  if (ctx.externalSignal?.aborted) {
+    throw new GithubFetchError('network_error', `github: aborted before request to ${url}`);
+  }
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ctx.timeoutMs);
+  const signal = mergeAbortSignals(controller.signal, ctx.externalSignal);
+  let response: Response;
+  try {
+    response = await ctx.fetchImpl(url, {
+      method: 'POST',
+      headers: { ...ctx.headers, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        query: REPO_DISCOVERY_QUERY,
+        variables: { login: owner, first: cap },
+      }),
+      signal,
+    });
+  } catch (err) {
+    throw new GithubFetchError(
+      'network_error',
+      `github: network error for ${url} — ${err instanceof Error ? err.message : String(err)}`,
+    );
+  } finally {
+    clearTimeout(timer);
+  }
+  if (response.status < 200 || response.status >= 300) {
+    throw await classifyHttpError(response, url);
+  }
+  let body: unknown;
+  try {
+    body = await response.json();
+  } catch (err) {
+    throw new GithubFetchError(
+      'malformed_response',
+      `github graphql: invalid JSON — ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+  return parseGraphqlReposResponse(body);
 }
 
 async function probeTestDir(ctx: ClientContext, fullName: string): Promise<boolean> {
@@ -334,10 +403,11 @@ export interface GithubFetchResult {
 }
 
 // Call budget per subject:
-//   1 (user) + 1 (top-repo list) + 20 repos × (4 test probes + 1 README + 1 LICENSE) = 122.
-// Documented so future increases (adding endpoints) stay below GitHub's
-// 5000/h authed-rate-limit ceiling assuming ~40 subjects per hour per
-// token. P1 endpoints (issues/releases/actions) are tracked separately.
+//   1 (user) + 1 (graphql top-repo list) + 20 repos × (4 test probes + 1 README + 1 LICENSE) = 122.
+// GraphQL replaces the REST /users/{owner}/repos call; per-repo
+// hygiene probes stay on REST because they have no GraphQL equivalent.
+// Stays well below GitHub's 5000/h authed-rate-limit assuming ~40
+// subjects per hour per token.
 export async function fetchGithubP0(
   owner: string,
   options: GithubClientOptions,
@@ -353,7 +423,7 @@ export async function fetchGithubP0(
   if (ctx.externalSignal?.aborted) {
     throw new GithubFetchError('network_error', 'github: aborted after user fetch');
   }
-  const rawRepos = await fetchTopRepos(ctx, owner, cap);
+  const rawRepos = await fetchTopReposViaGraphQL(ctx, owner, cap);
   if (ctx.externalSignal?.aborted) {
     throw new GithubFetchError('network_error', 'github: aborted after repo list fetch');
   }

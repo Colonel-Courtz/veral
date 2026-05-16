@@ -14,7 +14,7 @@ const AGENT_ID = 'github-extract';
 const AGENT_VERSION = '1.0.0';
 const AGENT_DOMAIN = 'github';
 
-const BACKEND_VERSION = '2022-11-28';
+const BACKEND_VERSION = '2022-11-28+graphql-v4';
 
 type CacheFn = <T>(key: string, ttlSeconds: number, fetcher: () => Promise<T>) => Promise<T>;
 

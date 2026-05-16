@@ -64,13 +64,22 @@ const userBody = (login: string, repos: number) => ({
   public_repos: repos,
 });
 
-const repoListBody = (repos: ReadonlyArray<{ name: string; stars: number }>) =>
-  repos.map((r) => ({
-    name: r.name,
-    full_name: `${OWNER}/${r.name}`,
-    pushed_at: '2026-05-01T00:00:00Z',
-    stargazers_count: r.stars,
-  }));
+const graphqlReposBody = (repos: ReadonlyArray<{ name: string; stars: number }>) => ({
+  data: {
+    user: {
+      repositories: {
+        nodes: repos.map((r) => ({
+          name: r.name,
+          nameWithOwner: `${OWNER}/${r.name}`,
+          stargazerCount: r.stars,
+          pushedAt: '2026-05-01T00:00:00Z',
+        })),
+      },
+    },
+  },
+});
+
+const graphqlUserNullBody = () => ({ data: { user: null } });
 
 describe('createGithubAgent', () => {
   let originalToken: string | undefined;
@@ -86,9 +95,9 @@ describe('createGithubAgent', () => {
   it('happy path: user + repos + per-repo P0 probes resolve to typed findings', async () => {
     const fetchImpl = routerFetch({
       [`/users/${OWNER}`]: () => jsonResponse(userBody(OWNER, 2)),
-      [`/users/${OWNER}/repos?per_page=20&sort=updated`]: () =>
+      '/graphql': () =>
         jsonResponse(
-          repoListBody([
+          graphqlReposBody([
             { name: 'alpha', stars: 100 },
             { name: 'beta', stars: 50 },
           ]),
@@ -140,7 +149,7 @@ describe('createGithubAgent', () => {
     expect(result.provenance.backend).toEqual({
       kind: 'rest-api',
       baseUrl: BASE,
-      version: '2022-11-28',
+      version: '2022-11-28+graphql-v4',
     });
   });
 
@@ -165,7 +174,7 @@ describe('createGithubAgent', () => {
     process.env.GITHUB_TOKEN = 'env-token';
     const fetchImpl = routerFetch({
       [`/users/${OWNER}`]: () => jsonResponse(userBody(OWNER, 0)),
-      [`/users/${OWNER}/repos?per_page=20&sort=updated`]: () => jsonResponse([]),
+      '/graphql': () => jsonResponse(graphqlReposBody([])),
     });
     const agent = createGithubAgent({ baseUrl: BASE, fetchImpl, cache: passThroughCache });
     const result = await agent.run(input());
@@ -175,7 +184,7 @@ describe('createGithubAgent', () => {
   it('returns status=partial when the user is not found (404 → null user)', async () => {
     const fetchImpl = routerFetch({
       [`/users/${OWNER}`]: () => new Response('not found', { status: 404 }),
-      [`/users/${OWNER}/repos?per_page=20&sort=updated`]: () => jsonResponse([]),
+      '/graphql': () => jsonResponse(graphqlUserNullBody()),
     });
     const agent = createGithubAgent({
       token: 'tok',
@@ -192,7 +201,7 @@ describe('createGithubAgent', () => {
   it('returns status=ok with empty repos when the owner has no public repos', async () => {
     const fetchImpl = routerFetch({
       [`/users/${OWNER}`]: () => jsonResponse(userBody(OWNER, 0)),
-      [`/users/${OWNER}/repos?per_page=20&sort=updated`]: () => jsonResponse([]),
+      '/graphql': () => jsonResponse(graphqlReposBody([])),
     });
     const agent = createGithubAgent({
       token: 'tok',
@@ -293,7 +302,7 @@ describe('createGithubAgent', () => {
     };
     const fetchImpl = routerFetch({
       [`/users/${OWNER}`]: () => jsonResponse(userBody(OWNER, 0)),
-      [`/users/${OWNER}/repos?per_page=20&sort=updated`]: () => jsonResponse([]),
+      '/graphql': () => jsonResponse(graphqlReposBody([])),
     });
     const agent = createGithubAgent({
       token: 'tok',
@@ -310,9 +319,9 @@ describe('createGithubAgent', () => {
   it('respects topRepoCap so the per-subject HTTP budget stays bounded', async () => {
     const fetchImpl = routerFetch({
       [`/users/${OWNER}`]: () => jsonResponse(userBody(OWNER, 5)),
-      [`/users/${OWNER}/repos?per_page=2&sort=updated`]: () =>
+      '/graphql': () =>
         jsonResponse(
-          repoListBody([
+          graphqlReposBody([
             { name: 'a', stars: 1 },
             { name: 'b', stars: 2 },
           ]),
@@ -363,6 +372,9 @@ describe('createGithubAgent', () => {
       if (parsed.pathname === `/users/${OWNER}`) {
         return jsonResponse(userBody(OWNER, 0));
       }
+      if (parsed.pathname === '/graphql') {
+        return jsonResponse(graphqlReposBody([]));
+      }
       return jsonResponse([]);
     };
     const agent = createGithubAgent({
@@ -375,5 +387,93 @@ describe('createGithubAgent', () => {
     await agent.run({ ...input(), signal: controller.signal });
     expect(observedSignal).toBeDefined();
     expect(observedSignal?.aborted).toBe(false);
+  });
+  it('GraphQL discovery returns repos in stargazer DESC order from GitHub', async () => {
+    const fetchImpl = routerFetch({
+      [`/users/${OWNER}`]: () => jsonResponse(userBody(OWNER, 3)),
+      '/graphql': () =>
+        jsonResponse(
+          graphqlReposBody([
+            { name: 'big', stars: 1000 },
+            { name: 'mid', stars: 100 },
+            { name: 'small', stars: 10 },
+          ]),
+        ),
+      _default: () => new Response('not found', { status: 404 }),
+    });
+    const agent = createGithubAgent({
+      token: 'tok',
+      baseUrl: BASE,
+      fetchImpl,
+      cache: passThroughCache,
+    });
+    const result = await agent.run(input());
+    expect(result.status).toBe('ok');
+    expect(result.findings?.repos.map((r) => r.name)).toEqual(['big', 'mid', 'small']);
+    expect(result.findings?.repos.map((r) => r.stars)).toEqual([1000, 100, 10]);
+  });
+
+  it('GraphQL data.user=null produces empty repos and partial status (via REST 404)', async () => {
+    const fetchImpl = routerFetch({
+      [`/users/${OWNER}`]: () => new Response('not found', { status: 404 }),
+      '/graphql': () => jsonResponse(graphqlUserNullBody()),
+    });
+    const agent = createGithubAgent({
+      token: 'tok',
+      baseUrl: BASE,
+      fetchImpl,
+      cache: passThroughCache,
+    });
+    const result = await agent.run(input());
+    expect(result.status).toBe('partial');
+    expect(result.findings?.user).toBeNull();
+    expect(result.findings?.repos).toEqual([]);
+  });
+
+  it('GraphQL errors array surfaces as malformed_response', async () => {
+    const fetchImpl = routerFetch({
+      [`/users/${OWNER}`]: () => jsonResponse(userBody(OWNER, 1)),
+      '/graphql': () =>
+        jsonResponse({
+          errors: [{ message: "Field 'repositories' is missing required argument" }],
+        }),
+    });
+    const agent = createGithubAgent({
+      token: 'tok',
+      baseUrl: BASE,
+      fetchImpl,
+      cache: passThroughCache,
+    });
+    const result = await agent.run(input());
+    expect(result.status).toBe('error');
+    expect(result.provenance.errorMessage).toMatch(/github graphql:/);
+  });
+
+  it('GraphQL HTTP 503 returns server_error without falling back to REST repo list', async () => {
+    let restListInvoked = 0;
+    const fetchImpl: GithubFetchImpl = async (url) => {
+      const parsed = new URL(url);
+      if (parsed.pathname === `/users/${OWNER}`) {
+        return jsonResponse(userBody(OWNER, 1));
+      }
+      if (parsed.pathname === '/graphql') {
+        return new Response('upstream down', { status: 503 });
+      }
+      if (parsed.pathname === `/users/${OWNER}/repos`) {
+        restListInvoked += 1;
+        return jsonResponse([]);
+      }
+      return new Response('not configured', { status: 599 });
+    };
+    const agent = createGithubAgent({
+      token: 'tok',
+      baseUrl: BASE,
+      fetchImpl,
+      cache: passThroughCache,
+    });
+    const result = await agent.run(input());
+    expect(result.status).toBe('error');
+    expect(result.provenance.errorMessage).toMatch(/server error.*503/);
+    expect(restListInvoked).toBe(0);
   });
 });
