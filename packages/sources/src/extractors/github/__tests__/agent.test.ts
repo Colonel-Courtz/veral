@@ -206,9 +206,50 @@ describe('createGithubAgent', () => {
     expect(result.findings?.callBudget).toBe(2);
   });
 
-  it('returns status=error on a 403 rate-limit response', async () => {
+  it('returns status=error on a 403 with X-RateLimit-Remaining: 0 (rate-limited)', async () => {
     const fetchImpl = routerFetch({
-      _default: () => new Response('rate limited', { status: 403 }),
+      _default: () =>
+        new Response('rate limited', {
+          status: 403,
+          headers: { 'x-ratelimit-remaining': '0' },
+        }),
+    });
+    const agent = createGithubAgent({
+      token: 'tok',
+      baseUrl: BASE,
+      fetchImpl,
+      cache: passThroughCache,
+    });
+    const result = await agent.run(input());
+    expect(result.status).toBe('error');
+    expect(result.provenance.errorMessage).toMatch(/rate limited/);
+  });
+
+  it('returns status=error mentioning unauthorized on a 403 with "Bad credentials" body', async () => {
+    const fetchImpl = routerFetch({
+      _default: () =>
+        new Response(JSON.stringify({ message: 'Bad credentials' }), {
+          status: 403,
+          headers: { 'content-type': 'application/json' },
+        }),
+    });
+    const agent = createGithubAgent({
+      token: 'tok',
+      baseUrl: BASE,
+      fetchImpl,
+      cache: passThroughCache,
+    });
+    const result = await agent.run(input());
+    expect(result.status).toBe('error');
+    expect(result.provenance.errorMessage).toMatch(/unauthorized/);
+  });
+
+  it('falls back to rate-limited on a 403 with no signal headers and non-auth body', async () => {
+    const fetchImpl = routerFetch({
+      _default: () =>
+        new Response('forbidden for unknown reason', {
+          status: 403,
+        }),
     });
     const agent = createGithubAgent({
       token: 'tok',

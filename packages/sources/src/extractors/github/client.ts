@@ -15,6 +15,7 @@ export type GithubFetchErrorReason =
   | 'network_error'
   | 'malformed_response'
   | 'rate_limited'
+  | 'unauthorized'
   | 'not_found'
   | 'server_error';
 
@@ -70,11 +71,45 @@ function buildContext(options: GithubClientOptions): ClientContext {
   };
 }
 
-function classifyHttpError(status: number, url: string): GithubFetchError {
-  if (status === 403 || status === 429) {
+// GitHub overloads 403 for both quota exhaustion and authentication
+// failure (revoked token, missing scope). Operators need to know which
+// happened: rate-limit clears on its own, auth needs a new token. The
+// official rate-limit signal is X-RateLimit-Remaining: 0; auth failures
+// surface in the JSON body's `message` field as "Bad credentials" or
+// "Resource not accessible by integration".
+async function classifyHttpError(response: Response, url: string): Promise<GithubFetchError> {
+  const status = response.status;
+  if (status === 429) {
     return new GithubFetchError(
       'rate_limited',
       `github: rate limited (HTTP ${status}) for ${url}`,
+      status,
+    );
+  }
+  if (status === 403) {
+    if (response.headers.get('x-ratelimit-remaining') === '0') {
+      return new GithubFetchError(
+        'rate_limited',
+        `github: rate limited (HTTP 403, remaining=0) for ${url}`,
+        status,
+      );
+    }
+    let body = '';
+    try {
+      body = await response.text();
+    } catch {
+      // Body unreadable — fall through to conservative rate_limited default.
+    }
+    if (/bad credentials|resource not accessible/i.test(body)) {
+      return new GithubFetchError(
+        'unauthorized',
+        `github: unauthorized (HTTP 403) for ${url}`,
+        status,
+      );
+    }
+    return new GithubFetchError(
+      'rate_limited',
+      `github: rate limited (HTTP 403) for ${url}`,
       status,
     );
   }
@@ -123,8 +158,7 @@ async function probe<T>(
   }
 
   if (response.status === 404) return { kind: 'absent' };
-  if (response.status < 200 || response.status >= 300)
-    throw classifyHttpError(response.status, url);
+  if (response.status < 200 || response.status >= 300) throw await classifyHttpError(response, url);
 
   let body: unknown;
   try {
