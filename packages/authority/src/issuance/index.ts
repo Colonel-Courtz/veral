@@ -1,2 +1,2 @@
-export * from './eligibility-gate.js';
-export * from './payload-builder.js';
+export * from './eligibility-gate';
+export * from './payload-builder';

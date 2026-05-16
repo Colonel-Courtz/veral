@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { computeScore } from '../engine.js';
-import type { MultiSourceEvidence } from '../evidence-types.js';
+import { computeScore } from '../engine';
+import type { MultiSourceEvidence } from '../evidence-types';
 
 const SUBJECT_NAMEHASH = `0x${'a'.repeat(64)}` as `0x${string}`;
 const NOW_SECONDS = 1_715_788_800; // 2026-05-15T12:00:00Z

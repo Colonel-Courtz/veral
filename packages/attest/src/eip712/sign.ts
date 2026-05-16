@@ -5,7 +5,7 @@ import {
   buildVeralCertTypedData,
   type VeralCertMessage,
   type VeralCertTypedData,
-} from './typed-data.js';
+} from './typed-data';
 
 export const REPORT_SIGNER_PRIVATE_KEY_ENV = 'REPORT_SIGNER_PRIVATE_KEY';
 

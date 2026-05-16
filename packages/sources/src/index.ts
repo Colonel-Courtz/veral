@@ -1,3 +1,3 @@
-export * from './ai-analysis/index.js';
-export * from './extractors/index.js';
-export * from './forensic/index.js';
+export * from './ai-analysis/index';
+export * from './extractors/index';
+export * from './forensic/index';

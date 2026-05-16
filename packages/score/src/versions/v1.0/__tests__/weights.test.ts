@@ -7,7 +7,7 @@ import {
   TRUST_DISCOUNT_UNVERIFIED,
   TRUST_DISCOUNT_VERIFIED,
   trustFactor,
-} from '../weights.js';
+} from '../weights';
 
 function sumWeights(table: Record<string, { weight: number }>): number {
   return Object.values(table).reduce((acc, c) => acc + c.weight, 0);

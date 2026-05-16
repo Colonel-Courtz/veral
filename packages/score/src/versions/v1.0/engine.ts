@@ -11,8 +11,8 @@ import {
   repoHygiene,
   sourcifyRecency,
   testPresence,
-} from './components.js';
-import type { ComponentValue, MultiSourceEvidence } from './evidence-types.js';
+} from './components';
+import type { ComponentValue, MultiSourceEvidence } from './evidence-types';
 import {
   AXIS_WEIGHTS,
   RELEVANCE_WEIGHTS,
@@ -21,7 +21,7 @@ import {
   type SeniorityComponentId,
   trustFactor,
   type WeightedComponent,
-} from './weights.js';
+} from './weights';
 
 export const SCORE_FORMULA_VERSION = 'v1.0.0' as const;
 

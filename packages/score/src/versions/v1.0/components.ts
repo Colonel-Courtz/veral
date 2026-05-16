@@ -3,7 +3,7 @@ import type {
   GithubRepoP0,
   MultiSourceEvidence,
   SourcifyEntryEvidence,
-} from './evidence-types.js';
+} from './evidence-types';
 
 const NULL_P1: ComponentValue = { value: null, status: 'null_p1' };
 const NULL_NO_DATA: ComponentValue = { value: null, status: 'null_no_data' };
@@ -11,13 +11,17 @@ const NULL_NO_DATA: ComponentValue = { value: null, status: 'null_no_data' };
 const SECONDS_PER_DAY = 86_400;
 const SECONDS_PER_MONTH = 30 * SECONDS_PER_DAY;
 
-// Anti-gaming: ignore Sourcify entries whose function-signature count is
-// below 2. A Hello-World contract publishes 0–1 functions; we want real
-// surface before compileSuccess accepts the verification as evidence.
+// Anti-gaming: a Hello-World contract publishes 0–1 functions; require
+// at least 2 before compileSuccess accepts the verification as evidence.
+// functionSignatures === null means "agent did not surface signatures";
+// we treat null as "cannot verify gate" and exclude the entry rather
+// than fail-open — the inverse would silently let Hello-World deploys
+// pass whenever the upstream extractor returns no signatures.
 function entryPassesComplexityGate(entry: SourcifyEntryEvidence): boolean {
   if (entry.kind !== 'ok') return false;
-  const fnCount = entry.deep.functionSignatures?.length ?? 0;
-  return fnCount >= 2;
+  const sigs = entry.deep.functionSignatures;
+  if (sigs === null) return false;
+  return sigs.length >= 2;
 }
 
 function clamp01(x: number): number {

@@ -1,1 +1,1 @@
-export * from './eip712/index.js';
+export * from './eip712/index';

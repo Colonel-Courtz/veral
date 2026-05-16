@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildProvenance, canonicalJson, hashCanonical, sha256Hex } from './provenance.js';
+import { buildProvenance, canonicalJson, hashCanonical, sha256Hex } from './provenance';
 
 describe('canonicalJson', () => {
   it('sorts keys recursively so reordered objects hash identically', () => {

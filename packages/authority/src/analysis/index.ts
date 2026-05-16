@@ -1,3 +1,3 @@
-export * from './orchestrator.js';
-export * from './registry.js';
-export * from './synthesis/index.js';
+export * from './orchestrator';
+export * from './registry';
+export * from './synthesis/index';

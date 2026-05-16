@@ -1,3 +1,3 @@
-export * from './manifest-verification.js';
-export * from './thresholds.js';
-export * from './ttl.js';
+export * from './manifest-verification';
+export * from './thresholds';
+export * from './ttl';

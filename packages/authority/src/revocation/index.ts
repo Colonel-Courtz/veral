@@ -1,1 +1,1 @@
-export * from './expiry.js';
+export * from './expiry';

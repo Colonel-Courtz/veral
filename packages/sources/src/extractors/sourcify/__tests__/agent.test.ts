@@ -9,8 +9,8 @@ vi.hoisted(() => {
 import type { AgentInput } from '@veral/shared';
 import { describe, expect, it } from 'vitest';
 
-import { type CacheFn, createSourcifyAgent } from '../agent.js';
-import type { FetchLike } from '../client.js';
+import { type CacheFn, createSourcifyAgent } from '../agent';
+import type { FetchLike } from '../client';
 
 const SUBJECT_ADDRESS = '0xdac17f958d2ee523a2206206994597c13d831ec7' as const;
 const SUBJECT_NAMEHASH = `0x${'a'.repeat(64)}` as `0x${string}`;
@@ -185,5 +185,39 @@ describe('createSourcifyAgent', () => {
     expect(observed).toHaveLength(1);
     expect(observed[0]?.key).toBe(`sourcify:1:${SUBJECT_ADDRESS.toLowerCase()}`);
     expect(observed[0]?.ttl).toBe(60 * 60 * 24);
+  });
+
+  it('forwards AgentInput.signal to the fetch impl', async () => {
+    let observedSignal: AbortSignal | undefined;
+    const fetchImpl = stubFetch((_url, init) => {
+      observedSignal = init?.signal ?? undefined;
+      return jsonResponse({ match: 'exact_match', compilation: {} });
+    });
+    const agent = createSourcifyAgent({
+      baseUrl: 'http://sourcify.test',
+      fetchImpl,
+      cache: passThroughCache,
+    });
+    const externalController = new AbortController();
+    await agent.run({ ...makeInput(), signal: externalController.signal });
+    expect(observedSignal).toBeDefined();
+    expect(observedSignal?.aborted).toBe(false);
+  });
+
+  it('a pre-aborted external signal aborts the fetch signal', async () => {
+    let observedSignal: AbortSignal | undefined;
+    const fetchImpl = stubFetch((_url, init) => {
+      observedSignal = init?.signal ?? undefined;
+      return jsonResponse({ match: 'exact_match', compilation: {} });
+    });
+    const agent = createSourcifyAgent({
+      baseUrl: 'http://sourcify.test',
+      fetchImpl,
+      cache: passThroughCache,
+    });
+    const externalController = new AbortController();
+    externalController.abort();
+    await agent.run({ ...makeInput(), signal: externalController.signal });
+    expect(observedSignal?.aborted).toBe(true);
   });
 });

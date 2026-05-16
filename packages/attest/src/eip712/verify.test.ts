@@ -1,9 +1,9 @@
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 import { describe, expect, it } from 'vitest';
 
-import { signVeralCert } from './sign.js';
-import { TIER_CODE, type VeralCertMessage, ZERO_BYTES32 } from './typed-data.js';
-import { verifyVeralCert } from './verify.js';
+import { signVeralCert } from './sign';
+import { TIER_CODE, type VeralCertMessage, ZERO_BYTES32 } from './typed-data';
+import { verifyVeralCert } from './verify';
 
 const TEST_KEY = generatePrivateKey();
 const OTHER_KEY = generatePrivateKey();

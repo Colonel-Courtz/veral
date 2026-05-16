@@ -1,4 +1,6 @@
-import type { SourcifyContractFinding, SourcifyMatchLevel } from './schema.js';
+import { mergeAbortSignals } from '@veral/shared';
+
+import type { SourcifyContractFinding, SourcifyMatchLevel } from './schema';
 
 export const DEFAULT_SOURCIFY_BASE_URL = 'https://sourcify.dev/server';
 export const DEFAULT_SOURCIFY_TIMEOUT_MS = 10_000;
@@ -26,6 +28,10 @@ export interface SourcifyClientOptions {
   readonly baseUrl?: string;
   readonly fetchImpl?: FetchLike;
   readonly timeoutMs?: number;
+  // Orchestrator-supplied cancellation. Merged with the per-request
+  // timeout AbortController so either deadline aborts the underlying
+  // fetch and releases the socket.
+  readonly signal?: AbortSignal;
 }
 
 // Env may carry the root (`https://sourcify.dev/server`) or include /v2 already.
@@ -118,12 +124,13 @@ export async function fetchSourcifyContract(
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const signal = mergeAbortSignals(controller.signal, options.signal);
 
   let response: Response;
   try {
     response = await fetchImpl(url, {
       headers: { accept: 'application/json' },
-      signal: controller.signal,
+      signal,
     });
   } catch (err) {
     throw new SourcifyFetchError(
