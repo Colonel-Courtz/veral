@@ -7,10 +7,16 @@ vi.hoisted(() => {
 });
 
 import type { AgentResult, AgentStatus } from '@veral/shared';
-import type { EthereumFindings, GithubFindings, SourcifyFindings } from '@veral/sources';
+import type {
+  EnsFindings,
+  EthereumFindings,
+  GithubFindings,
+  SourcifyFindings,
+} from '@veral/sources';
 
 import {
   adaptAgentResultsToEvidence,
+  ENS_AGENT_ID,
   ETHEREUM_AGENT_ID,
   GITHUB_AGENT_ID,
   SOURCIFY_AGENT_ID,
@@ -561,5 +567,147 @@ describe('adaptAgentResultsToEvidence — Ethereum branch', () => {
       expect(ev.onchain[0].value.nonce).toBe(7);
       expect(ev.onchain[0].value.firstTxBlock).toBe(1n);
     }
+  });
+});
+
+describe('adaptAgentResultsToEvidence — ENS branch', () => {
+  function ensResult(
+    status: AgentStatus,
+    findings: EnsFindings | null,
+  ): AgentResult<EnsFindings | null> {
+    return {
+      agentId: ENS_AGENT_ID,
+      agentVersion: '1.0.0',
+      runUuid: 'run-1',
+      runStartedAt: 0,
+      runFinishedAt: 1,
+      status,
+      findings,
+      provenance: {
+        backend: { kind: 'rpc', chain: 'ensdomains:mainnet', provider: 'alchemy+thegraph' },
+        inputHash: '0x',
+      },
+    };
+  }
+
+  function ensFindings(overrides: Partial<EnsFindings> = {}): EnsFindings {
+    return {
+      trust: 'verified',
+      ensName: 'alice.eth',
+      namehash: `0x${'a'.repeat(64)}` as `0x${string}`,
+      registrationTimestamp: 1_700_000_000,
+      expiryTimestamp: 1_731_536_000,
+      subnameCount: 3,
+      textRecordKeys: ['url', 'avatar', 'com.github'],
+      resolverAddress: `0x${'b'.repeat(40)}` as `0x${string}`,
+      lastUpdateBlock: 20_000_000,
+      ...overrides,
+    };
+  }
+
+  it('maps an ok result to kind=ok with bigint-converted lastUpdateBlock', () => {
+    const ev = adaptAgentResultsToEvidence([ensResult('ok', ensFindings())]);
+    expect(ev.ensInternal.kind).toBe('ok');
+    if (ev.ensInternal.kind === 'ok') {
+      expect(ev.ensInternal.value.registrationDate).toBe(1_700_000_000);
+      expect(ev.ensInternal.value.subnameCount).toBe(3);
+      expect(ev.ensInternal.value.textRecordCount).toBe(3);
+      expect(typeof ev.ensInternal.value.lastRecordUpdateBlock).toBe('bigint');
+      expect(ev.ensInternal.value.lastRecordUpdateBlock).toBe(20_000_000n);
+    }
+  });
+
+  it('preserves lastUpdateBlock=null without calling BigInt(null)', () => {
+    const ev = adaptAgentResultsToEvidence([
+      ensResult('ok', ensFindings({ lastUpdateBlock: null })),
+    ]);
+    if (ev.ensInternal.kind === 'ok') {
+      expect(ev.ensInternal.value.lastRecordUpdateBlock).toBeNull();
+    } else {
+      throw new Error('expected kind=ok');
+    }
+  });
+
+  it('derives textRecordCount from textRecordKeys.length', () => {
+    const ev = adaptAgentResultsToEvidence([
+      ensResult('ok', ensFindings({ textRecordKeys: ['url'] })),
+    ]);
+    if (ev.ensInternal.kind === 'ok') {
+      expect(ev.ensInternal.value.textRecordCount).toBe(1);
+    }
+  });
+
+  it('zero-text-records case → textRecordCount === 0', () => {
+    const ev = adaptAgentResultsToEvidence([ensResult('ok', ensFindings({ textRecordKeys: [] }))]);
+    if (ev.ensInternal.kind === 'ok') {
+      expect(ev.ensInternal.value.textRecordCount).toBe(0);
+    }
+  });
+
+  it('unregistered ENS (status partial) → kind:absent', () => {
+    const ev = adaptAgentResultsToEvidence([ensResult('partial', ensFindings())]);
+    expect(ev.ensInternal.kind).toBe('absent');
+  });
+
+  it('ENS agent error (RPC missing) → kind:error', () => {
+    const ev = adaptAgentResultsToEvidence([ensResult('error', null)]);
+    expect(ev.ensInternal.kind).toBe('error');
+  });
+
+  it('malformed ENS findings → kind:error', () => {
+    const malformed: AgentResult<unknown> = {
+      agentId: ENS_AGENT_ID,
+      agentVersion: '1.0.0',
+      runUuid: 'r',
+      runStartedAt: 0,
+      runFinishedAt: 1,
+      status: 'ok',
+      findings: { not: 'the right shape' },
+      provenance: {
+        backend: { kind: 'rpc', chain: 'ensdomains:mainnet', provider: 'alchemy+thegraph' },
+        inputHash: '0x',
+      },
+    };
+    const ev = adaptAgentResultsToEvidence([malformed]);
+    expect(ev.ensInternal.kind).toBe('error');
+  });
+
+  it('all four agents present → sourcify, github, onchain, ensInternal populated independently', () => {
+    const sourcify = sourcifyResult(
+      findings([
+        {
+          chainId: 1,
+          address: `0x${'a'.repeat(40)}` as `0x${string}`,
+          match: 'exact_match',
+          compilerVersion: null,
+          language: null,
+          contractName: null,
+        },
+      ]),
+    );
+    const github = githubResult(
+      'ok',
+      githubFindings({ login: 'alice', createdAt: null, publicRepos: 1 }, [
+        {
+          name: 'alpha',
+          fullName: 'alice/alpha',
+          pushedAt: '2026-05-01T00:00:00Z',
+          stars: 1,
+          hasTestDir: true,
+          hasSubstantialReadme: false,
+          hasLicense: true,
+        },
+      ]),
+    );
+    const ethereum = ethereumResult(
+      'ok',
+      ethereumFindings({ nonce: 7, firstTxBlock: 1, latestBlock: 100 }),
+    );
+    const ens = ensResult('ok', ensFindings());
+    const ev = adaptAgentResultsToEvidence([sourcify, github, ethereum, ens]);
+    expect(ev.sourcify).toHaveLength(1);
+    expect(ev.github.kind).toBe('ok');
+    expect(ev.onchain).toHaveLength(1);
+    expect(ev.ensInternal.kind).toBe('ok');
   });
 });

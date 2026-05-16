@@ -18,6 +18,7 @@ const AGENT_DOMAIN_BY_ID: Readonly<Record<string, string>> = {
   'sourcify-extract': 'sourcify',
   'github-extract': 'github',
   'ethereum-extract': 'ethereum',
+  'ens-extract': 'ens-internal',
 };
 
 function domainForAgentId(agentId: string): string {

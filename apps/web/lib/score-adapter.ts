@@ -1,4 +1,6 @@
 import type {
+  EnsInternalEvidence,
+  EnsInternalSignals,
   GithubEvidence,
   GithubRepoP0,
   MultiSourceEvidence,
@@ -8,6 +10,7 @@ import type {
 } from '@veral/score/v1.0';
 import type { AgentResult } from '@veral/shared';
 import type {
+  EnsFindings,
   EthereumFindings,
   GithubFindings,
   SourcifyFindings,
@@ -17,6 +20,7 @@ import type {
 export const SOURCIFY_AGENT_ID = 'sourcify-extract' as const;
 export const GITHUB_AGENT_ID = 'github-extract' as const;
 export const ETHEREUM_AGENT_ID = 'ethereum-extract' as const;
+export const ENS_AGENT_ID = 'ens-extract' as const;
 
 // The score engine consumes a typed evidence object (sourcify / github /
 // onchain / ensInternal). Each agent registered in
@@ -149,12 +153,45 @@ function mapSourcifyResult(result: AgentResult<unknown>): ReadonlyArray<Sourcify
   return result.findings.contracts.map((contract) => toSourcifyEntryEvidence(contract.match));
 }
 
+function isEnsFindings(value: unknown): value is EnsFindings {
+  if (typeof value !== 'object' || value === null) return false;
+  const obj = value as Record<string, unknown>;
+  return obj.trust === 'verified' && typeof obj.ensName === 'string';
+}
+
+function toEnsInternalSignals(findings: EnsFindings): EnsInternalSignals {
+  // The agent stores lastUpdateBlock as `number` for JSON-cache safety;
+  // the score engine consumes `bigint`. Mirrors the onchain pattern in
+  // toOnchainActivity — number → bigint at one boundary, null
+  // preserved without calling BigInt(null).
+  return {
+    registrationDate: findings.registrationTimestamp,
+    subnameCount: findings.subnameCount,
+    textRecordCount: findings.textRecordKeys.length,
+    lastRecordUpdateBlock:
+      findings.lastUpdateBlock !== null ? BigInt(findings.lastUpdateBlock) : null,
+  };
+}
+
+function mapEnsResult(result: AgentResult<unknown>): EnsInternalEvidence {
+  if (result.status === 'error') return { kind: 'error' };
+  if (!isEnsFindings(result.findings)) return { kind: 'error' };
+  // status='partial' is emitted for "unregistered name" (subgraph
+  // returned no domain row) and "subgraph errored but RPC succeeded".
+  // Both surface here as 'absent' so ensRecency short-circuits to
+  // null_no_data rather than treating bare resolver-only evidence
+  // as real signal.
+  if (result.status === 'partial') return { kind: 'absent' };
+  return { kind: 'ok', value: toEnsInternalSignals(result.findings) };
+}
+
 export function adaptAgentResultsToEvidence(
   agentResults: ReadonlyArray<AgentResult<unknown>>,
 ): MultiSourceEvidence {
   const sourcify: SourcifyEntryEvidence[] = [];
   let github: GithubEvidence = { kind: 'absent' };
   const onchain: OnchainEntryEvidence[] = [];
+  let ensInternal: EnsInternalEvidence = { kind: 'absent' };
   for (const result of agentResults) {
     if (result.agentId === SOURCIFY_AGENT_ID) {
       sourcify.push(...mapSourcifyResult(result));
@@ -163,6 +200,8 @@ export function adaptAgentResultsToEvidence(
     } else if (result.agentId === ETHEREUM_AGENT_ID) {
       const entry = mapEthereumResult(result);
       if (entry !== null) onchain.push(entry);
+    } else if (result.agentId === ENS_AGENT_ID) {
+      ensInternal = mapEnsResult(result);
     }
   }
   return {
@@ -170,6 +209,6 @@ export function adaptAgentResultsToEvidence(
     sourcify,
     github,
     onchain,
-    ensInternal: { kind: 'absent' },
+    ensInternal,
   };
 }

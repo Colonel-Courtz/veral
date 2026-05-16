@@ -10,7 +10,12 @@ import type { AgentResult, AgentStatus, SubjectManifest } from '@veral/shared';
 import { SubjectResolutionError, SubjectResolverConfigError, VeralError } from '@veral/shared';
 
 import { BenchHandlerError, computeBenchScore } from '../lib/bench-handler.js';
-import { ETHEREUM_AGENT_ID, GITHUB_AGENT_ID, SOURCIFY_AGENT_ID } from '../lib/score-adapter.js';
+import {
+  ENS_AGENT_ID,
+  ETHEREUM_AGENT_ID,
+  GITHUB_AGENT_ID,
+  SOURCIFY_AGENT_ID,
+} from '../lib/score-adapter.js';
 
 const SUBJECT_NAMEHASH = `0x${'a'.repeat(64)}` as `0x${string}`;
 const SUBJECT_ADDRESS = `0x${'d'.repeat(40)}` as `0x${string}`;
@@ -316,5 +321,55 @@ describe('BenchHandlerError', () => {
     expect(e.code).toBe('BAD_REQUEST');
     expect(e.message).toBe('I am a teapot');
     expect(e).toBeInstanceOf(Error);
+  });
+});
+
+describe('AGENT_DOMAIN_BY_ID lookup', () => {
+  it('maps ens-extract to ens-internal in the rollup', async () => {
+    const result = await computeBenchScore('alice.eth', {
+      resolveSubject: async () => fakeSubject(),
+      orchestrate: async () => ({
+        runUuid: RUN_UUID,
+        tier: 'Public' as const,
+        agentResults: [bareResult(ENS_AGENT_ID, 'ok')],
+        agentsTotal: 1,
+        agentsSucceeded: 1,
+        startedAt: NOW,
+        finishedAt: NOW,
+      }),
+      now: () => NOW,
+    });
+    expect(result.agentRollup[0]).toEqual({
+      agentId: ENS_AGENT_ID,
+      domain: 'ens-internal',
+      status: 'ok',
+    });
+  });
+
+  it('rollup mirrors registry insertion order across all four agents', async () => {
+    const result = await computeBenchScore('alice.eth', {
+      resolveSubject: async () => fakeSubject(),
+      orchestrate: async () => ({
+        runUuid: RUN_UUID,
+        tier: 'Public' as const,
+        agentResults: [
+          bareResult(SOURCIFY_AGENT_ID, 'ok'),
+          bareResult(GITHUB_AGENT_ID, 'ok'),
+          bareResult(ETHEREUM_AGENT_ID, 'ok'),
+          bareResult(ENS_AGENT_ID, 'ok'),
+        ],
+        agentsTotal: 4,
+        agentsSucceeded: 4,
+        startedAt: NOW,
+        finishedAt: NOW,
+      }),
+      now: () => NOW,
+    });
+    expect(result.agentRollup.map((r) => r.domain)).toEqual([
+      'sourcify',
+      'github',
+      'ethereum',
+      'ens-internal',
+    ]);
   });
 });
