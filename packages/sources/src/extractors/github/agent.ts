@@ -190,9 +190,3 @@ export function createGithubAgent(options: GithubAgentOptions = {}): SourceAgent
     },
   };
 }
-
-export const githubAgentMeta = {
-  id: AGENT_ID,
-  version: AGENT_VERSION,
-  domain: AGENT_DOMAIN,
-} as const;

@@ -174,9 +174,3 @@ export function createEthereumAgent(
     },
   };
 }
-
-export const ethereumAgentMeta = {
-  id: AGENT_ID,
-  version: AGENT_VERSION,
-  domain: AGENT_DOMAIN,
-} as const;
