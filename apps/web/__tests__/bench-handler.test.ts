@@ -6,11 +6,11 @@ vi.hoisted(() => {
   process.env.TURSO_DATABASE_URL ??= 'file::memory:';
 });
 
-import type { AgentResult, SubjectManifest } from '@veral/shared';
+import type { AgentResult, AgentStatus, SubjectManifest } from '@veral/shared';
 import { SubjectResolutionError, VeralError } from '@veral/shared';
 
 import { BenchHandlerError, computeBenchScore } from '../lib/bench-handler.js';
-import { SOURCIFY_AGENT_ID } from '../lib/score-adapter.js';
+import { ETHEREUM_AGENT_ID, GITHUB_AGENT_ID, SOURCIFY_AGENT_ID } from '../lib/score-adapter.js';
 
 const SUBJECT_NAMEHASH = `0x${'a'.repeat(64)}` as `0x${string}`;
 const SUBJECT_ADDRESS = `0x${'d'.repeat(40)}` as `0x${string}`;
@@ -63,8 +63,24 @@ function okSourcifyResult(): AgentResult<unknown> {
   };
 }
 
+function bareResult(agentId: string, status: AgentStatus): AgentResult<unknown> {
+  return {
+    agentId,
+    agentVersion: '1.0.0',
+    runUuid: RUN_UUID,
+    runStartedAt: NOW - 1,
+    runFinishedAt: NOW,
+    status,
+    findings: null,
+    provenance: {
+      backend: { kind: 'rest-api', baseUrl: 'http://test', version: '1' },
+      inputHash: '0x',
+    },
+  };
+}
+
 describe('computeBenchScore', () => {
-  it('returns a Veral ScoreResult composed from resolveSubject + orchestrate + score engine', async () => {
+  it('returns a BenchScoreResult composed from resolveSubject + orchestrate + score engine', async () => {
     const resolveSubject = vi.fn(async () => fakeSubject());
     const orchestrate = vi.fn(async () => ({
       runUuid: RUN_UUID,
@@ -83,17 +99,114 @@ describe('computeBenchScore', () => {
       runUuid: () => RUN_UUID,
     });
 
-    expect(result.subjectNamehash).toBe(SUBJECT_NAMEHASH);
-    expect(result.tier).toBe('Public');
-    expect(result.formulaVersion).toBe('v1.0.0');
-    expect(result.computedAt).toBe(NOW);
-    expect(result.components.length).toBeGreaterThan(0);
+    expect(result.score.subjectNamehash).toBe(SUBJECT_NAMEHASH);
+    expect(result.score.tier).toBe('Public');
+    expect(result.score.formulaVersion).toBe('v1.0.0');
+    expect(result.score.computedAt).toBe(NOW);
+    expect(result.score.components.length).toBeGreaterThan(0);
     // Verified Sourcify entry contributes to sourcifyRecency only —
     // compileSuccess sits behind a function-signature complexity gate
     // and the agent does not surface signatures yet, so it returns null.
-    expect(result.score).toBeGreaterThan(0);
+    expect(result.score.score).toBeGreaterThan(0);
+    expect(result.agentRollup).toHaveLength(1);
+    expect(result.agentRollup[0]).toEqual({
+      agentId: SOURCIFY_AGENT_ID,
+      domain: 'sourcify',
+      status: 'ok',
+    });
     expect(resolveSubject).toHaveBeenCalledWith('alice.eth');
     expect(orchestrate).toHaveBeenCalledTimes(1);
+  });
+
+  it('maps an ok/partial/error mix into the rollup with the correct domains', async () => {
+    const agentResults: ReadonlyArray<AgentResult<unknown>> = [
+      okSourcifyResult(),
+      bareResult(GITHUB_AGENT_ID, 'partial'),
+      bareResult(ETHEREUM_AGENT_ID, 'error'),
+    ];
+    const result = await computeBenchScore('alice.eth', {
+      resolveSubject: async () => fakeSubject(),
+      orchestrate: async () => ({
+        runUuid: RUN_UUID,
+        tier: 'Public' as const,
+        agentResults,
+        agentsTotal: 3,
+        agentsSucceeded: 1,
+        startedAt: NOW - 1,
+        finishedAt: NOW,
+      }),
+      now: () => NOW,
+    });
+    expect(result.agentRollup).toEqual([
+      { agentId: SOURCIFY_AGENT_ID, domain: 'sourcify', status: 'ok' },
+      { agentId: GITHUB_AGENT_ID, domain: 'github', status: 'partial' },
+      { agentId: ETHEREUM_AGENT_ID, domain: 'ethereum', status: 'error' },
+    ]);
+  });
+
+  it('rollup mirrors the orchestrator agent-results order (registry insertion order)', async () => {
+    const ordered: ReadonlyArray<AgentResult<unknown>> = [
+      bareResult(ETHEREUM_AGENT_ID, 'ok'),
+      bareResult(SOURCIFY_AGENT_ID, 'ok'),
+      bareResult(GITHUB_AGENT_ID, 'ok'),
+    ];
+    const result = await computeBenchScore('alice.eth', {
+      resolveSubject: async () => fakeSubject(),
+      orchestrate: async () => ({
+        runUuid: RUN_UUID,
+        tier: 'Public' as const,
+        agentResults: ordered,
+        agentsTotal: 3,
+        agentsSucceeded: 3,
+        startedAt: NOW,
+        finishedAt: NOW,
+      }),
+      now: () => NOW,
+    });
+    expect(result.agentRollup.map((r) => r.agentId)).toEqual([
+      ETHEREUM_AGENT_ID,
+      SOURCIFY_AGENT_ID,
+      GITHUB_AGENT_ID,
+    ]);
+  });
+
+  it('falls back to agentId-as-domain for an unknown agent id', async () => {
+    const result = await computeBenchScore('alice.eth', {
+      resolveSubject: async () => fakeSubject(),
+      orchestrate: async () => ({
+        runUuid: RUN_UUID,
+        tier: 'Public' as const,
+        agentResults: [bareResult('future-extract', 'ok')],
+        agentsTotal: 1,
+        agentsSucceeded: 1,
+        startedAt: NOW,
+        finishedAt: NOW,
+      }),
+      now: () => NOW,
+    });
+    expect(result.agentRollup[0]).toEqual({
+      agentId: 'future-extract',
+      domain: 'future-extract',
+      status: 'ok',
+    });
+  });
+
+  it('empty agentResults → empty rollup, zero score', async () => {
+    const result = await computeBenchScore('alice.eth', {
+      resolveSubject: async () => fakeSubject(),
+      orchestrate: async () => ({
+        runUuid: RUN_UUID,
+        tier: 'Public' as const,
+        agentResults: [],
+        agentsTotal: 0,
+        agentsSucceeded: 0,
+        startedAt: NOW,
+        finishedAt: NOW,
+      }),
+      now: () => NOW,
+    });
+    expect(result.agentRollup).toEqual([]);
+    expect(result.score.score).toBe(0);
   });
 
   it('rejects malformed ENS names with 400 BAD_REQUEST', async () => {
@@ -180,23 +293,6 @@ describe('computeBenchScore', () => {
       now: () => NOW,
     });
     expect(resolveSubject).toHaveBeenCalledWith('alice.eth');
-  });
-
-  it('produces a zero score when no agents returned findings', async () => {
-    const result = await computeBenchScore('alice.eth', {
-      resolveSubject: async () => fakeSubject(),
-      orchestrate: async () => ({
-        runUuid: RUN_UUID,
-        tier: 'Public' as const,
-        agentResults: [],
-        agentsTotal: 0,
-        agentsSucceeded: 0,
-        startedAt: NOW,
-        finishedAt: NOW,
-      }),
-      now: () => NOW,
-    });
-    expect(result.score).toBe(0);
   });
 });
 

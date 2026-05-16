@@ -15,11 +15,14 @@ export async function GET(_request: Request, ctx: RouteContext): Promise<Respons
   const { name } = await ctx.params;
 
   try {
-    const score = await computeBenchScore(name);
-    return Response.json(score, {
-      status: 200,
-      headers: { 'Cache-Control': CACHE_HEADER },
-    });
+    const result = await computeBenchScore(name);
+    return Response.json(
+      { score: result.score, agentRollup: result.agentRollup },
+      {
+        status: 200,
+        headers: { 'Cache-Control': CACHE_HEADER },
+      },
+    );
   } catch (err) {
     if (err instanceof BenchHandlerError) {
       return Response.json({ code: err.code, message: err.message }, { status: err.status });

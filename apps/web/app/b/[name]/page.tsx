@@ -49,18 +49,12 @@ export default async function BenchPage({ params }: PageProps) {
     );
   }
 
-  // v1 free endpoint only registers the Sourcify extractor; the
-  // orchestrator's per-agent rollup is not surfaced through ScoreResult,
-  // so we render a single static entry. The component is structured to
-  // accept N items so additional agents light up automatically.
-  const sourcesItems = [{ agentId: 'sourcify-extract', domain: 'sourcify', status: 'ok' as const }];
-
   return (
     <main className="min-h-screen px-6 md:px-12 py-12 max-w-5xl">
-      <ScoreCard score={result.score} tier={result.tier} subjectName={name} />
-      <ScoreBreakdown components={result.components} />
-      <SourcesStatus items={sourcesItems} />
-      <ProvenanceBar result={result} />
+      <ScoreCard score={result.score.score} tier={result.score.tier} subjectName={name} />
+      <ScoreBreakdown components={result.score.components} />
+      <SourcesStatus items={result.agentRollup} />
+      <ProvenanceBar result={result.score} />
     </main>
   );
 }

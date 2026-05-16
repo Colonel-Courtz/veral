@@ -1,12 +1,28 @@
 import { orchestrate } from '@veral/authority';
 import { resolveSubject } from '@veral/core';
 import { computeForVersion } from '@veral/score';
-import type { ScoreResult, SubjectManifest } from '@veral/shared';
+import type { AgentResult, AgentStatus, ScoreResult, SubjectManifest } from '@veral/shared';
 import { SubjectResolutionError, VeralError } from '@veral/shared';
 
 import { adaptAgentResultsToEvidence } from './score-adapter';
 
 const ENS_NAME_RE = /^[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]+$/i;
+
+// AgentResult does not currently carry a `domain` field; the registry
+// does. Until that surface is widened (tracked as a separate tech-debt
+// follow-up), the rollup derives the domain from agentId via this
+// static lookup. Unknown ids fall back to agentId-as-domain rather
+// than throw — a misregistered agent should still appear in the UI
+// instead of crashing the page.
+const AGENT_DOMAIN_BY_ID: Readonly<Record<string, string>> = {
+  'sourcify-extract': 'sourcify',
+  'github-extract': 'github',
+  'ethereum-extract': 'ethereum',
+};
+
+function domainForAgentId(agentId: string): string {
+  return AGENT_DOMAIN_BY_ID[agentId] ?? agentId;
+}
 
 export type BenchHandlerErrorCode = 'BAD_REQUEST' | 'NOT_FOUND' | 'BAD_GATEWAY' | 'INTERNAL';
 
@@ -28,6 +44,17 @@ export interface BenchHandlerDeps {
   readonly runUuid?: () => string;
 }
 
+export interface AgentRollupEntry {
+  readonly agentId: string;
+  readonly domain: string;
+  readonly status: AgentStatus;
+}
+
+export interface BenchScoreResult {
+  readonly score: ScoreResult;
+  readonly agentRollup: ReadonlyArray<AgentRollupEntry>;
+}
+
 function nowSecondsDefault(): number {
   return Math.floor(Date.now() / 1000);
 }
@@ -44,19 +71,20 @@ function validateEnsName(raw: string): string {
   return trimmed;
 }
 
-export async function computeBenchScore(
-  rawName: string,
-  deps: BenchHandlerDeps = {},
-): Promise<ScoreResult> {
-  const ensName = validateEnsName(rawName);
-  const resolve = deps.resolveSubject ?? resolveSubject;
-  const run = deps.orchestrate ?? orchestrate;
-  const now = deps.now ?? nowSecondsDefault;
-  const uuid = deps.runUuid ?? defaultRunUuid;
+function toRollupEntry(result: AgentResult<unknown>): AgentRollupEntry {
+  return {
+    agentId: result.agentId,
+    domain: domainForAgentId(result.agentId),
+    status: result.status,
+  };
+}
 
-  let subject: SubjectManifest;
+async function resolveSubjectOrThrow(
+  resolve: (ensName: string) => Promise<SubjectManifest>,
+  ensName: string,
+): Promise<SubjectManifest> {
   try {
-    subject = await resolve(ensName);
+    return await resolve(ensName);
   } catch (err) {
     if (err instanceof SubjectResolutionError) {
       throw new BenchHandlerError(404, 'NOT_FOUND', err.message);
@@ -66,14 +94,15 @@ export async function computeBenchScore(
     }
     throw new BenchHandlerError(500, 'INTERNAL', err instanceof Error ? err.message : String(err));
   }
+}
 
-  let orchestrationOutput: Awaited<ReturnType<typeof orchestrate>>;
+async function orchestrateOrThrow(
+  run: typeof orchestrate,
+  subject: SubjectManifest,
+  runUuid: string,
+): Promise<Awaited<ReturnType<typeof orchestrate>>> {
   try {
-    orchestrationOutput = await run({
-      subject,
-      tier: 'Public',
-      runUuid: uuid(),
-    });
+    return await run({ subject, tier: 'Public', runUuid });
   } catch (err) {
     throw new BenchHandlerError(
       502,
@@ -81,13 +110,33 @@ export async function computeBenchScore(
       `orchestrator failed: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
+}
+
+export async function computeBenchScore(
+  rawName: string,
+  deps: BenchHandlerDeps = {},
+): Promise<BenchScoreResult> {
+  const ensName = validateEnsName(rawName);
+  const resolve = deps.resolveSubject ?? resolveSubject;
+  const run = deps.orchestrate ?? orchestrate;
+  const now = deps.now ?? nowSecondsDefault;
+  const uuid = deps.runUuid ?? defaultRunUuid;
+
+  const subject = await resolveSubjectOrThrow(resolve, ensName);
+  const orchestrationOutput = await orchestrateOrThrow(run, subject, uuid());
+
+  // Rollup is captured BEFORE the score-adapter so the per-agent status
+  // is preserved even for agents the adapter does not yet drain into
+  // MultiSourceEvidence — the UI still surfaces every agent that ran.
+  const agentRollup = orchestrationOutput.agentResults.map(toRollupEntry);
 
   const evidence = adaptAgentResultsToEvidence(orchestrationOutput.agentResults);
   const computedAt = now();
-  return computeForVersion('v1.0')(evidence, {
+  const score = computeForVersion('v1.0')(evidence, {
     nowSeconds: computedAt,
     subjectNamehash: subject.namehash,
     tier: 'Public',
     computedAt,
   });
+  return { score, agentRollup };
 }
